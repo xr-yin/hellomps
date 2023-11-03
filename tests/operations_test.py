@@ -2,7 +2,10 @@ import numpy as np
 
 import unittest
 import sys
-sys.path.append('/home/stud/ge47jac/hellomps')
+import os
+
+hellompspath = os.path.dirname(os.path.abspath(os.getcwd()))
+sys.path.append(os.path.join(hellompspath, "hellomps"))
 
 from hellomps.networks.operations import *
 from hellomps.networks.mpo import MPO
