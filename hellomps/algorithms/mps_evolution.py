@@ -94,7 +94,7 @@ class TEBD2(object):
 class TimedependentTEBD(TEBD2):
     def __init__(self, psi: MPS, hduo) -> None:
         super().__init__(psi, hduo)
-        pass
+        raise NotImplementedError('Not implemented yet')
 
 
 class tMPS(object):
@@ -132,11 +132,16 @@ class tMPS(object):
             #del full_o
             #gc.collect()
 
-    def run(self, Nsteps:int, dt:float, tol:float, m_max=None, compress_sweeps=2):
+    def run(self, Nsteps:int, dt:float, tol:float, m_max=None, backend='zip_up', compress_sweeps=2):
         self.make_uMPO(dt)
-        for i in range(Nsteps):
-            zip_up(self.uMPO, self.psi, tol)
-            #apply_mpo(self.uMPO, self.psi, tol, m_max, max_sweeps=compress_sweeps, overwrite=True)
+        if backend == 'zip_up':
+            for i in range(Nsteps):
+                zip_up(self.uMPO, self.psi, tol)
+        elif backend == 'varational':
+            for i in range(Nsteps):
+                apply_mpo(self.uMPO, self.psi, tol, m_max, max_sweeps=compress_sweeps, overwrite=True)
+        else:
+            raise ValueError('backend can only be zip-up or varational.')
 
 
 class TDVPOneSite(object):
@@ -159,6 +164,7 @@ class TDVPOneSite(object):
         self.psi = psi
         self.dt = dt /2
         self.M = M
+        raise NotImplementedError('Not implemented yet')
 
 
     def train(self):
@@ -201,7 +207,10 @@ class TDVPOneSite(object):
             pass
 
 class TimedependentTDVP(TDVPOneSite):
-    pass
+    
+    def __init__(self, psi: MPS, dt: float, M: int):
+        super().__init__(psi, dt, M)
+        raise NotImplementedError('Not implemented yet')
 
 
 if __name__ == "__main__":
