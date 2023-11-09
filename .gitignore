@@ -1,6 +1,6 @@
 # using the template Python.gitignore
 # Byte-compiled / optimized / DLL files
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 
