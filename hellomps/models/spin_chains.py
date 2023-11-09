@@ -18,14 +18,15 @@ class SpinChain(object):
     Params:
         N: chain length
     """
+    cid = np.eye(2)
+    nu = np.zeros([2,2])
+    sx = np.array([[0., 1.], [1., 0.]])
+    sy = np.array([[0., -1j], [1j, 0.]])
+    sz = np.array([[1., 0.], [0., -1.]])
+    splus = np.array([[0., 1.], [0., 0.]])
+    sminus = np.array([[0., 0.], [1., 0.]])
+    
     def __init__(self, N:int) -> None:
-        self.cid = np.eye(2)
-        self.nu = np.zeros([2,2])
-        self.sx = np.array([[0., 1.], [1., 0.]])
-        self.sy = np.array([[0., -1j], [1j, 0.]])
-        self.sz = np.array([[1., 0.], [0., -1.]])
-        self.splus = np.array([[0., 1.], [0., 0.]])
-        self.sminus = np.array([[0., 0.], [1., 0.]])
         self._N = N
 
     def Liouvillian(self, H, *Ls):
