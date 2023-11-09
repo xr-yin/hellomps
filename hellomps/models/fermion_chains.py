@@ -12,13 +12,16 @@ from ..networks.mps import MPS
 __all__ = ['SpinlessFermion', 'KitaevChain']
 
 class SpinlessFermion(object):
+    """
+    class for spinless fermions
+    """
+    cn = np.array([[0., 1.], [0., 0.]])
+    ct = np.array([[0., 0.], [1., 0.]])
+    id = np.eye(2)
+    num = np.array([[0., 0.], [0., 1.]])
 
     def __init__(self, N:int) -> None:
         self._N = N
-        self.cn = np.array([[0., 1.], [0., 0.]])
-        self.ct = np.array([[0., 0.], [1., 0.]])
-        self.id = np.eye(2)
-        self.num = np.array([[0., 0.], [0., 1.]])
 
     def Liouvillian(self, H, *Ls):
         """
@@ -101,6 +104,8 @@ class KitaevChain(SpinlessFermion):
         Ls = []
         for i, ll in enumerate(self.lduo):
             Ls.append(sparse.kron(sparse.eye(2**i), sparse.kron(ll, sparse.eye(2**(N-2-i)))))
-        # first transform each full Lindblad operator into superoperator, then sum together
-        # what about the other way around?
+        # first transform each full Lindblad operator into superoperator, then sum together, oder is important
         return super().Liouvillian(self.H_full, *Ls)
+    
+class FermiHubburd():
+    pass
