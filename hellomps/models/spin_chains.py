@@ -19,7 +19,7 @@ class SpinChain(object):
         N: chain length
     """
     def __init__(self, N:int) -> None:
-        self.id = np.eye(2)
+        self.cid = np.eye(2)
         self.nu = np.zeros([2,2])
         self.sx = np.array([[0., 1.], [1., 0.]])
         self.sy = np.array([[0., -1j], [1j, 0.]])
@@ -71,7 +71,7 @@ class TransverseIsing(SpinChain):
 
     @property
     def mpo(self):
-        sx, sz, nu, id = self.sx, self.sz, self.nu, self.id
+        sx, sz, nu, id = self.sx, self.sz, self.nu, self.cid
         J, g = self.J, self.g
         O = np.array([[id, nu, nu],
                       [sz, nu, nu],
@@ -83,7 +83,7 @@ class TransverseIsing(SpinChain):
     
     @property
     def hduo(self):
-        sx, sz, id = self.sx, self.sz, self.id
+        sx, sz, id = self.sx, self.sz, self.cid
         J, g = self.J, self.g
         h_list = []
         for i in range(self._N - 1):
