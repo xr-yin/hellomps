@@ -117,6 +117,11 @@ class LPTN(MPO):
             return np.real_if_close(res)
             #return res
 
-    @property
     def to_density_matrix(self):
-        return mul(self.hc, self).to_matrix()
+        """
+        density matrix for the locally purified tensor network
+        \rho = X  X^\dagger
+        """
+        A = self.hc()
+        B = self
+        return mul(self, self.hc()).to_matrix()
