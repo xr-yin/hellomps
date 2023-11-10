@@ -9,17 +9,31 @@ from scipy import sparse
 from numpy.linalg import norm
 
 from .spin_chains import SpinChain
+from .boson_chains import BosonChain
 from ..networks.mps import MPS
 
-__all__ = ['hamiltonian', 'diagonal', 'off_diagonal', 'envelope', 'flux']
+__all__ = ['QubitCavity']
 
-class qubitncavity(SpinChain):
-    def __init__(self, N: int, alphas: list, omegas:list, gamma:float) -> None:
-        super().__init__(N)
-        self.ct = np.diag([m**0.5 for m in range(1,4)], -1)
-        self.cn = np.diag([m**0.5 for m in range(1,4)], +1)
-        self.num = np.diag([0,1,2,3])
-        self.cid = np.eye(4)
+class QubitCavity(BosonChain,SpinChain):
+    """
+    Two qubits each coupled to a cavity, the two cavities are also coupled together.
+    Sketch of the system
+           alpha1    alpha2    alpha1
+        S1 ------ C1 ------ C2 ------ S2
+
+    where S stands for Spin qubit, C stands for Cavity.
+
+    As default, we truncate the local Hilbert space dimension of cavities to 4, i.e. at most 3 excitations 
+    and design the system to be symmetric. We may as well modify these assumptions.
+
+    Parameters:
+        alphas: a list containing coupling strengths between spins and cavities, cavity and cavity
+        omegas: a list containing resonate frequencies of the cavities and the spins
+        gamma: coupling strength between the system and the environment
+    """
+    def __init__(self, alphas: list, omegas:list, gamma:float) -> None:
+        super().__init__(N=4, d=4)  # calls __init__() in the BosonChain class
+        # in the following , self.num also refers to the class BosonChain
         self.alphas = alphas
         self.omegas = omegas
         self.gamma = gamma
@@ -28,16 +42,16 @@ class qubitncavity(SpinChain):
     def hduo(self):
         a1, a2 = self.alphas
         wc, ws = self.omegas
-        S1C1 = a1*(np.kron(self.splus,self.cn) + np.kron(self.sminus,self.ct))\
-              + wc*np.kron(self.id,self.num) + ws*np.kron(self.sz,self.cid)
-        C2S2 = a2*(np.kron(self.cn,self.splus) + np.kron(self.ct,self.sminus))\
-              + wc*np.kron(self.num,self.id) + ws*np.kron(self.cid,self.sz)
-        C1C2 = np.kron(self.ct, self.cn) + np.kron(self.cn, self.ct)
+        S1C1 = a1*(np.kron(self.splus,self.bn) + np.kron(self.sminus,self.bt))\
+              + wc*np.kron(self.cid,self.num) + ws*np.kron(self.sz,self.bid)
+        C2S2 = a2*(np.kron(self.bn,self.splus) + np.kron(self.bt,self.sminus))\
+              + wc*np.kron(self.num,self.cid) + ws*np.kron(self.bid,self.sz)
+        C1C2 = np.kron(self.bt, self.bn) + np.kron(self.bn, self.bt)
         return [S1C1, C1C2, C2S2]
 
     @property    
     def Lloc(self):
-        r = [self.sminus,self.cn,self.cn,self.sminus]
+        r = [self.sminus,self.bn,self.bn,self.sminus]
         return [np.sqrt(self.gamma)*item for item in r]
     
     @property
@@ -70,7 +84,7 @@ class qubitncavity(SpinChain):
         return Ls
     
     def occupation(self,psi:MPS):
-        return psi.site_expectation_value([(self.sz+self.id)/2,self.num,self.num,(self.sz+self.id)/2])
+        return psi.site_expectation_value([(self.sz+self.cid)/2,self.num,self.num,(self.sz+self.cid)/2])
 
 class hamiltonian(object):
     """
