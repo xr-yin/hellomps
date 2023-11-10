@@ -42,7 +42,8 @@ class MPO(object):
         bond_dims[0] = bond_dims[-1] = 1
         As = []
         for i in range(N):
-            As.append(rng.random((bond_dims[i],bond_dims[i+1],phy_dims[i], phy_dims[i])))
+            As.append(rng.random((bond_dims[i],bond_dims[i+1],phy_dims[i], phy_dims[i]))
+                      + 1j*rng.random((bond_dims[i],bond_dims[i+1],phy_dims[i], phy_dims[i])))
         if hermitian:
             As = [A + A.swapaxes(2,3).conj() for A in As]
         return cls(As)
@@ -69,7 +70,7 @@ class MPO(object):
                 self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1])
             self.As[-1] /= norm(self.As[-1].squeeze())
         else:
-            assert isinstance(center_idx, int)
+            #assert isinstance(center_idx, int)
             assert center_idx >= 0
             assert center_idx < self._N
             for i in range(center_idx):
@@ -77,26 +78,17 @@ class MPO(object):
             for i in range(self._N-1,center_idx,-1):
                 self.As[i-1], self.As[i] = self._rq_step(self.As[i-1], self.As[i])
             self.As[center_idx] /= norm(self.As[center_idx].squeeze())
-
-    def multiply(self, Bs):
-        """
-        Multiply two MPAs together A * B
-                k |
-            i---- A ----j
-                k*|
-                k |
-            i---- B ----j
-                k*|        
-
-        """
-        pass
     
-    @property
     def conj(self):
+        """
+        Complex conjugate of the MPO
+        """
         return MPO([A.conj() for A in self.As])
     
-    @property
     def hc(self):
+        """
+        Hermitian conjugate of the MPO
+        """
         return MPO([A.swapaxes(2,3).conj() for A in self.As])
 
     def to_matrix(self):
