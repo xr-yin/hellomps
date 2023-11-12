@@ -6,11 +6,14 @@
 __author__='Xianrui Yin'
 
 import numpy as np
-from scipy.linalg import expm, qr, rq
+from scipy.linalg import qr, rq
+from scipy.sparse.linalg import expm
 
 import gc
+import os
 import logging
 logging.basicConfig(level=logging.ERROR)
+logging.info(f'number of threads in use:{os.environ.get("OMP_NUM_THREADS")}')
 
 from ..networks.mps import MPS
 from ..networks.mpo import MPO
@@ -135,8 +138,12 @@ class tMPS(object):
     def run(self, Nsteps:int, dt:float, tol:float, m_max=None, backend='zip_up', compress_sweeps=2):
         self.make_uMPO(dt)
         if backend == 'zip_up':
-            for i in range(Nsteps):
-                zip_up(self.uMPO, self.psi, tol)
+            self.psi.orthonormalize('right')
+            for i in range(Nsteps//2):
+                zip_up(self.uMPO, self.psi, tol, start='left')
+                zip_up(self.uMPO, self.psi, tol, start='right')
+            if Nsteps % 2:
+                zip_up(self.uMPO, self.psi, tol, start='left')
         elif backend == 'varational':
             for i in range(Nsteps):
                 apply_mpo(self.uMPO, self.psi, tol, m_max, max_sweeps=compress_sweeps, overwrite=True)
