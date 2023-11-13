@@ -6,12 +6,13 @@ Near term:
 performances.
 5. Inspect the norm profile of the LPTN.
 6. How to set the tolerence while splitting a two-site tensor in our guess state during compression? Test on 3 regimes?
-7. Combine codes for varational optimization. By creating a seperate class?
-8. Create a class holding multiplication?
+7. Unify qr_step() and rq_step().
 
 Middle term:
-1. Write a Lanzcos method for (Hermitian) matrix exponential. (Might not matter much for small matrices.)
+1. Write a Lanzcos method for (Hermitian) matrix exponential. Alternatively, use scipy.sparse.linalg but a LinerOperator implementation of uMPO might be needed. Don't forget to do some benchmarking.
 2. Implement quantum number conservation.
+3. Write the states into disk for calcualting expectation values later.
+4. Write a config file to specify the BLAS backend of numpy/scipy and the number of CPU cores for multithreading.
 
 Long term:
-1. Add support for parallel computation
+1. Add support for further parallel computation.
