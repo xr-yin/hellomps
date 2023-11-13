@@ -3,10 +3,11 @@ from copy import deepcopy
 #from numba import jit
 
 import logging
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.WARNING)
 
+from ..networks.mpo_projected import *
 
-__all__ = ['split', 'merge', 'mul', 'apply_mpo', 'zip_up', 'load_right_bond_tensors']
+__all__ = ['split', 'merge', 'mul', 'apply_mpo', 'zip_up']
 
 def split(theta, mode:str, tol:float, m_max=None):
     '''
@@ -126,108 +127,93 @@ def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
                 ---psi----
     """
     N = len(psi)
-    phi = deepcopy(psi) # assume psi is only changed slightly, 
-    phi.orthonormalize('right') # useful when O is a time evolution operator 
-    RBT = load_right_bond_tensors(O, psi, phi) # for a small time step
-    LBT = [np.ones((1,1,1))]*(N+1)
+    phi = deepcopy(psi) # assume psi is only changed slightly, useful
+    phi.orthonormalize('right') # when O is a time evolution operator 
+    Rs = RightBondTensors(N)  # for a small time step
+    Ls = LeftBondTensors(N)
+    Rs.load(phi, psi, O)
     for n in range(max_sweeps):
         for i in range(N-1): # sweep from left to right
             j = i+1
-            temp = merge(psi.As[i], psi.As[j])
-            # contracting left block LBT[i]
-            temp = np.tensordot(LBT[i], temp, axes=(0,0))
-            # contracting the MPO tensor
-            temp = np.tensordot(temp, O.As[i], axes=([0,3],[0,3]))
-            temp = np.tensordot(temp, O.As[j], axes=([3,2],[0,3]))
-            # contracting right block RBT[j]
-            temp = np.tensordot(temp, RBT[j], axes=[(1,3),(0,1)])
-            temp = np.transpose(temp, (0,3,1,2))
+            x = merge(psi.As[i], psi.As[j])
+            eff_O = ProjTwoSite(Ls[i], Rs[j], O.As[i], O.As[j])
+            x = eff_O._matvec(x)
             # split the result tensor
-            phi.As[i], phi.As[j] = split(temp, 'right', tol, m_max)
-            # compute the left bond tensor LBT[j]
-            LBT[j] = np.tensordot(psi.As[i], LBT[i], axes=(0,0))
-            LBT[j] = np.tensordot(LBT[j], O.As[i], axes=([1,2],[3,0]))
-            LBT[j] = np.tensordot(LBT[j], phi.As[i].conj(), axes=([1,3],[0,2]))
-        LBT[N] = np.tensordot(psi.As[-1], LBT[N-1], axes=(0,0))
-        LBT[N] = np.tensordot(LBT[N], O.As[-1], axes=([1,2],[3,0]))
-        LBT[N] = np.tensordot(LBT[N], phi.As[-1].conj(), axes=([1,3],[0,2]))
+            phi.As[i], phi.As[j] = split(x, 'right', tol, m_max)
+            # update the left bond tensor LBT[j]
+            Ls.update(j, phi.As[i].conj(), psi.As[i], O.As[i])
         for j in range(N-1,0,-1): # sweep from right to left
             i = j-1
-            temp = merge(psi.As[i], psi.As[j])
+            x = merge(psi.As[i], psi.As[j])
             # contracting left block LBT[i]
-            temp = np.tensordot(LBT[i], temp, axes=(0,0))
-            # contracting the MPO tensor
-            temp = np.tensordot(temp, O.As[i], axes=([0,3],[0,3]))
-            temp = np.tensordot(temp, O.As[j], axes=([3,2],[0,3]))
-            # contracting right block RBT[j]
-            temp = np.tensordot(temp, RBT[j], axes=[(1,3),(0,1)])
-            temp = np.transpose(temp, (0,3,1,2))
+            eff_O = ProjTwoSite(Ls[i], Rs[j], O.As[i], O.As[j])
+            x = eff_O._matvec(x)
             # split the result tensor
-            phi.As[i], phi.As[j] = split(temp, 'left', tol, m_max)
-            # compute the right bond tensor RBT[i]
-            RBT[i] = np.tensordot(psi.As[j], RBT[j], axes=(1,0))
-            RBT[i] = np.tensordot(RBT[i], O.As[j], axes=([1,2],[3,1]))
-            RBT[i] = np.tensordot(RBT[i], phi.As[j].conj(), axes=([1,3],[1,2]))
-        RBT[-1] = np.tensordot(psi.As[0], RBT[0], axes=(1,0))
-        RBT[-1] = np.tensordot(RBT[-1], O.As[0], axes=([1,2],[3,1]))
-        RBT[-1] = np.tensordot(RBT[-1], phi.As[0].conj(), axes=([1,3],[1,2]))
-        #logging.info(f'The overlap recorded in the #{n} sweep are {LBT[-1].ravel()} and {RBT[-1].ravel()}')
+            phi.As[i], phi.As[j] = split(x, 'left', tol, m_max)
+            # update the right bond tensor RBT[i]
+            Rs.update(i, phi.As[j].conj(), psi.As[j], O.As[j])
+        #logging.info('TODO: show norm')
     if overwrite:
         psi.As = phi.As
     else:
         return phi
 
-def zip_up(O, psi, tol):
-    """
+def zip_up(O, psi, tol, start='left'):
+    r"""
     Zip-up method for contracting a MPO with a MPS
 
     Parameters:
-        O: MPO
-        psi: MPS to be modified in place
-        tol: largest discarded singular value in each truncation step
+        O : MPO
+            the operator
+        psi : MPS
+            the operand, modified in place
+        tol : float
+            largest discarded singular value in each truncation step
+        start : str
+            if 'left', the contraction (zipping) is performed from left
+            to right. This should be used when the inital state is right
+            canonical. For `start`='right', it is the other way around.
     """
     assert len(O) == len(psi)
     N = len(psi)
     psi.orthonormalize('right')
-    M = np.tensordot(psi.As[0], O.As[0], axes=([0,2],[0,3]))
-    M = M[None,:,:,:] # s, m, w, k
-    for i in range(N-1):
-        M = np.transpose(M, (0,3,1,2)) # s,k,m,w
-        s, k, m, w = M.shape
-        M = np.reshape(M, (s*k, m*w)) # (s,k), (m,w)
-        u, svals, vt = np.linalg.svd(M, full_matrices=False)
-        svals1 = svals / np.linalg.norm(svals)
-        mask = svals1 > tol
-        psi.As[i] = np.reshape(u[:,mask], (s, k, -1)) # s, k, s'
-        psi.As[i] = np.swapaxes(psi.As[i], 1, 2)  # s, s', k
-        M = np.reshape(np.diag(svals[mask]) @ vt[mask,:], (-1, m, w))
-        M = np.tensordot(M, psi.As[i+1], axes=(1,0))
-        M = np.tensordot(M, O.As[i+1], axes=([1,3],[0,3]))
-    M = M[:,:,0,:]
-    psi.As[N-1] = M / np.linalg.norm(M)
-
-def load_right_bond_tensors(O, psi, phi):
-    """
-    Iteratively computing the right bond tensors resulted from the following contraction:
-    R_(j-1) = ((R_j & psi_j) & O_j) & phi*_j
-
-    Parameters:
-        O: MPO
-        psi: MPS (used as ket)
-        phi: MPS (used as bra)
-
-    Note: We adopted a different index convention to someother literatures, R_j (L_j) stands 
-    for the bond tensor right (left) to the j-th site. The last element RBT[-1] (LBT[N]) 
-    is the inner product <phi|O|psi>.
-    """
-    assert len(psi) == len(O) == len(phi)
-    N = len(psi)
-    RBT = [np.ones((1,1,1))] * (N+1)
-    for i in range(N-1,-1,-1):
-        RBT[i-1] = np.tensordot(psi.As[i], RBT[i], axes=(1,0))
-        RBT[i-1] = np.tensordot(RBT[i-1], O.As[i], axes=([1,2],[2,1]))
-        RBT[i-1] = np.tensordot(RBT[i-1], phi.As[i].conj(), axes=([1,3],[1,2]))
-    return RBT
+    if start == 'left':
+        M = np.tensordot(psi.As[0], O.As[0], axes=([0,2],[0,3]))
+        M = M[None,:,:,:] # s, m, w, k
+        for i in range(N-1):
+            M = np.transpose(M, (0,3,1,2)) # s,k,m,w
+            s, k, m, w = M.shape
+            M = np.reshape(M, (s*k, m*w)) # (s,k), (m,w)
+            u, svals, vt = np.linalg.svd(M, full_matrices=False)
+            svals1 = svals / np.linalg.norm(svals)
+            mask = svals1 > tol
+            psi.As[i] = np.reshape(u[:,mask], (s, k, -1)) # s, k, s'
+            psi.As[i] = np.swapaxes(psi.As[i], 1, 2)  # s, s', k
+            M = np.reshape(np.diag(svals[mask]) @ vt[mask,:], (-1, m, w))
+            M = np.tensordot(M, psi.As[i+1], axes=(1,0))
+            M = np.tensordot(M, O.As[i+1], axes=([1,3],[0,3]))
+        M = M[:,:,0,:]
+        psi.As[N-1] = M / np.linalg.norm(M)
+        # psi is now in the left canonical form
+    elif start == 'right':
+        M = np.tensordot(psi.As[-1], O.As[-1], axes=([1,2],[1,3]))
+        M = M[:,:,None,:] # m, w, s, k        
+        for i in range(N-1, 0, -1):
+            m, w, s, k = M.shape
+            M = np.reshape(M, (m*w, s*k))
+            u, svals, vt = np.linalg.svd(M, full_matrices=False)
+            svals1 = svals / np.linalg.norm(svals)
+            mask = svals1 > tol
+            psi.As[i] = np.reshape(vt[mask,:], (-1, s, k)) # s', s, k
+            M = np.reshape(u[:,mask] * svals[mask], (m, w, -1))
+            M = np.tensordot(psi.As[i-1], M, axes=(1,0))
+            M = np.tensordot(M, O.As[i-1], axes=([1,2],[3,1]))
+            M = np.transpose(M, (0,2,1,3))
+        M = M[:,0,:,:]
+        psi.As[0] = M / np.linalg.norm(M)
+        # psi is now in the right canonical form
+    else:
+        raise ValueError('start can only be left or right.')
 
 if __name__ == "__main__":
     pass
