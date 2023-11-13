@@ -12,7 +12,7 @@ from hellomps.networks.mps import MPS
 from hellomps.models.spin_chains import TransverseIsing
 from hellomps.algorithms.mps_evolution import tMPS, TEBD2
 
-class TestOperations(unittest.TestCase):
+class TestMPSEvolution(unittest.TestCase):
         
     def test_TEBD2(self):
 
