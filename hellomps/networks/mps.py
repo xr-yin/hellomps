@@ -13,9 +13,9 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 
-from .operations import merge, split
+from .operations import qr_step, rq_step, merge, split
 
-__all__ = ['MPS', 'as_mps', 'inner', 'compress','load_right_bond_tensors']
+__all__ = ['MPS', 'as_mps', 'inner', 'compress']
 
 class MPS(object):
     '''
@@ -105,13 +105,13 @@ class MPS(object):
 
         if mode == 'right':
             for i in range(self.__N-1, 0,-1):
-                 self.As[i-1], self.As[i] = self._rq_step(self.As[i-1], self.As[i])
-            #self.As[0], norm = self._rq_step(np.ones([1,1,1], self.As[0]))
+                 self.As[i-1], self.As[i] = rq_step(self.As[i-1], self.As[i])
+            #self.As[0], norm = rq_step(np.ones([1,1,1], self.As[0]))
             self.As[0] /= norm(self.As[0].squeeze())
         elif mode == 'left':
             for i in range(self.__N - 1):
-                self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1])
-            #self.As[-1], norm = self._qr_step(self.As[-1], np.ones([1,1,1]))
+                self.As[i], self.As[i+1] = qr_step(self.As[i], self.As[i+1])
+            #self.As[-1], norm = qr_step(self.As[-1], np.ones([1,1,1]))
             #norm = norm.ravel()
             self.As[-1] /= norm(self.As[-1].squeeze())
         else:
@@ -119,9 +119,9 @@ class MPS(object):
             assert center_idx > 0
             assert center_idx < self.__N
             for i in range(center_idx):
-                self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1])
+                self.As[i], self.As[i+1] = qr_step(self.As[i], self.As[i+1])
             for i in range(self.__N-1,center_idx,-1):
-                self.As[i-1], self.As[i] = self._rq_step(self.As[i-1], self.As[i])
+                self.As[i-1], self.As[i] = rq_step(self.As[i-1], self.As[i])
             self.As[center_idx] /= norm(self.As[center_idx].squeeze())
 
     @property
@@ -138,7 +138,7 @@ class MPS(object):
             S = []
             self.orthonormalize(mode='right')
             for i in range(self.__N - 1):
-                self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1])
+                self.As[i], self.As[i+1] = qr_step(self.As[i], self.As[i+1])
                 s = np.linalg.svd(self.As[i+1],full_matrices=False,compute_uv=False)
                 s = s[s>1.e-15]
                 ss = s*s
@@ -170,7 +170,7 @@ class MPS(object):
                 opc = np.tensordot(amp, op[i], axes=(2,1)) # apply local operator
                 res = np.tensordot(amp.conj(), opc, axes=3)
                 exp.append(np.real_if_close(res))
-                self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1]) # move the orthogonality center
+                self.As[i], self.As[i+1] = qr_step(self.As[i], self.As[i+1]) # move the orthogonality center
             amp = self.As[-1]
             opc = np.tensordot(amp, op[-1], axes=(2,1)) # apply local operator
             res = np.tensordot(amp.conj(), opc, axes=3)
@@ -203,7 +203,7 @@ class MPS(object):
                 opc = np.tensordot(amp, op[i], axes=([2,3],[2,3])) # apply local operator
                 res = np.tensordot(amp.conj(), opc, axes=4)
                 exp.append(np.real_if_close(res))
-                self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1]) # move the orthogonality center
+                self.As[i], self.As[i+1] = qr_step(self.As[i], self.As[i+1]) # move the orthogonality center
             self.As = cache
             return exp
         else:
@@ -239,34 +239,6 @@ class MPS(object):
     
     def conj(self):
         return MPS([A.conj() for A in self.As])
-
-    @staticmethod
-    def _qr_step(ls,rs):
-        """
-           2,k         2,k
-            |           |
-         ---ls---    ---rs--- = 
-         0,i  1,j    0,i  1,j 
-        """
-        di, dj, dk = ls.shape
-        ls = ls.transpose(0,2,1).reshape(-1,dj) # stick i,k together, first need to switch j,k
-        # compute QR decomposition of the left matrix
-        ls, _r = qr(ls, overwrite_a=True, mode='economic') 
-        ls = ls.reshape(di,dk,-1).transpose(0,2,1)
-        # multiply matrix R into the right matrix
-        rs = np.tensordot(_r, rs, axes=1)
-        return ls, rs
-    
-    @staticmethod
-    def _rq_step(ls,rs):
-         di, dj, dk = rs.shape
-         rs = rs.reshape(di,-1)
-         # compute RQ decomposition of the right matrix
-         _r, rs = rq(rs, overwrite_a=True, mode='economic')
-         rs = rs.reshape(-1,dj,dk)
-         # multiply matrix R into the left matrix
-         ls = np.tensordot(ls, _r, axes=(1,0)).transpose(0,2,1)
-         return ls, rs
     
     def __len__(self):
         return self.__N
@@ -329,7 +301,7 @@ def compress(psi:MPS, tol:float, max_sweeps:int, m_max:int, overwrite=False):
         phi.As[i] = vt[mask,:].reshape(-1,dj,dk)
         phi.As[i-1] = np.tensordot(phi.As[i-1], u[:,mask]*s[mask], axes=(1,0)).swapaxes(1,2)
     # now we arrive at a right canonical MPS
-    RBT = load_right_bond_tensors(psi,phi)
+    RBT = _load_right_bond_tensors(psi,phi)
     LBT = [np.ones((1,1))] * (N+1)
     nsweeps = 0
     for n in range(max_sweeps):
@@ -360,19 +332,23 @@ def compress(psi:MPS, tol:float, max_sweeps:int, m_max:int, overwrite=False):
         logging.info(f'The overlap recorded in the #{n} sweep are {LBT[-1].ravel()} and {RBT[-1].ravel()}')
     return phi
 
-def load_right_bond_tensors(psi:MPS, phi:MPS):
+def _load_right_bond_tensors(psi:MPS, phi:MPS):
     """
     calculate the right bond tensors while contracting two MPSs.
     RBT[i] is to the right of the MPS.As[i].
 
-    Parameters:
-        psi: MPS (used as ket)
-        phi: MPS (used as bra)
+    Parameters
+    ----------
+    psi : MPS 
+        used as ket
+    phi : MPS 
+        used as bra
 
-    Return:
-        RBT: a list of length N+1. The first N elements are the right bond tensors, 
-        i.e. RBT[i] is to the right of the i-th local tensor. The last element, i.e.
-        RBT[-1] == RBT[N] is the inner product of psi and phi.
+    Return
+    ----------
+    RBT: a list of length N+1. The first N elements are the right bond tensors, 
+    i.e. RBT[i] is to the right of the i-th local tensor. The last element, i.e.
+    RBT[-1] == RBT[N] is the inner product of psi and phi.
     """
     assert len(psi) == len(phi)
     N = len(psi)

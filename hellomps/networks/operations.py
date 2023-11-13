@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.linalg import qr, rq
 from copy import deepcopy
 #from numba import jit
 
@@ -7,7 +8,34 @@ logging.basicConfig(level=logging.WARNING)
 
 from ..networks.mpo_projected import *
 
-__all__ = ['split', 'merge', 'mul', 'apply_mpo', 'zip_up']
+__all__ = ['qr_step', 'rq_step', 'split', 'merge', 'mul', 'apply_mpo', 'zip_up']
+
+
+def qr_step(ls,rs):
+    """
+          2,k         2,k
+           |           |
+        ---ls---    ---rs--- = 
+        0,i  1,j    0,i  1,j 
+    """
+    di, dj, dk = ls.shape
+    ls = ls.transpose(0,2,1).reshape(-1,dj) # stick i,k together, first need to switch j,k
+    # compute QR decomposition of the left matrix
+    ls, _r = qr(ls, overwrite_a=True, mode='economic') 
+    ls = ls.reshape(di,dk,-1).transpose(0,2,1)
+    # multiply matrix R into the right matrix
+    rs = np.tensordot(_r, rs, axes=1)
+    return ls, rs
+
+def rq_step(ls,rs):
+    di, dj, dk = rs.shape
+    rs = rs.reshape(di,-1)
+    # compute RQ decomposition of the right matrix
+    _r, rs = rq(rs, overwrite_a=True, mode='economic')
+    rs = rs.reshape(-1,dj,dk)
+    # multiply matrix R into the left matrix
+    ls = np.tensordot(ls, _r, axes=(1,0)).transpose(0,2,1)
+    return ls, rs
 
 def split(theta, mode:str, tol:float, m_max=None):
     '''

@@ -8,6 +8,7 @@ hellompspath = os.path.dirname(os.path.abspath(os.getcwd()))
 sys.path.append(os.path.join(hellompspath, "hellomps"))
 
 from hellomps.networks.mps import *
+from hellomps.networks.mps import _load_right_bond_tensors
 
 class TestMPS(unittest.TestCase):
 
@@ -58,7 +59,7 @@ class TestMPS(unittest.TestCase):
         m_max = 10
         psi = MPS.gen_random_state(N, m_max, [3]*N)
         phi = MPS.gen_random_state(N, m_max, [3]*N)
-        RBT = load_right_bond_tensors(psi, phi)
+        RBT = _load_right_bond_tensors(psi, phi)
         self.assertEqual(len(RBT), N+1)
         self.assertEqual([_.shape for _ in RBT[:-1]], 
                 [(i,j) for i,j in zip(psi.bond_dims[1:],phi.bond_dims[1:])])
