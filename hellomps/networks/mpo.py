@@ -11,23 +11,24 @@ from scipy.linalg import norm, qr, rq
 __all__ = ['MPO']
 
 class MPO(object):
-    """
-    class for matrix product operators
+    """class for matrix product operators
 
-    Parameters:
-            As: list of rank-4 tensors, each tensor has the following shape
+    Parameters
+    ----------
+    As : list 
+        a list of rank-4 tensors, each tensor has the following shape
 
-                k |
-            i---- A ----j
-                k*|
-            i (j) is the left (right) bond leg and k (k*) is the ket (bra) physical leg
-            the legs are ordered as `i, j, k, k*`
+        k |
+    i---- A ----j
+        k*|
 
-    Attributes:
-            As: i, j, k, k*
-            __N:
-    Methods:
-            get_full
+    i (j) is the left (right) bond leg and k (k*) is the ket (bra) physical leg
+    the legs are ordered as `i, j, k, k*`
+
+    Attributes
+    ----------
+    As : list
+        as described above
     """
     def __init__(self, As) -> None:
         self.As = As 
@@ -93,7 +94,9 @@ class MPO(object):
 
     def to_matrix(self):
         """
-        convert the MPO into a (sparse) matrix
+        convert the MPO into a dense matrix for best compatability. Users
+        are free to further convert it into a sparse matrix to explore more
+        efficient linear algebra algorithms.
         """
         full = self.As[0]
         for i in range(1,self._N):
