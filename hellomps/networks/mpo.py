@@ -5,8 +5,8 @@
 __author__='Xianrui Yin'
 
 import numpy as np
-from scipy import sparse
-from scipy.linalg import norm, qr, rq
+
+from .operations import orthonormalizer
 
 __all__ = ['MPO']
 
@@ -65,27 +65,8 @@ class MPO(object):
         return [A.shape[2] for A in self]
     
     def orthonormalize(self, mode: str, center_idx=None):
-        if mode == 'right':
-            for i in range(self._N-1, 0,-1):
-                self[i-1], self[i] = self._rq_step(self[i-1], self[i])
-            self[0] /= norm(self[0].squeeze())
-        elif mode == 'left':
-            for i in range(self._N - 1):
-                self[i], self[i+1] = self._qr_step(self[i], self[i+1])
-            self[-1] /= norm(self[-1].squeeze())
-        elif mode == 'mixed':
-            #assert isinstance(center_idx, int)
-            assert center_idx >= 0
-            assert center_idx < self._N
-            for i in range(center_idx):
-                self[i], self[i+1] = self._qr_step(self[i], self[i+1])
-            for i in range(self._N-1,center_idx,-1):
-                self[i-1], self[i] = self._rq_step(self[i-1], self[i])
-            self[center_idx] /= norm(self[center_idx].squeeze())
-        else:
-             raise ValueError(
-                  'Mode argument should be one of left, right or mixed')
-    
+        orthonormalizer(self, mode=mode, center_idx=center_idx)
+
     def conj(self):
         """
         Return
@@ -127,35 +108,6 @@ class MPO(object):
     
     def __iter__(self):
         return iter(self.As)
-    
-    @staticmethod
-    def _qr_step(ls,rs):
-        """
-            2,k           2,k
-             |             |
-         ----ls----    ----rs----  
-         0,i |  1,j    0,i | 1,j 
-            3,l           3,l
-        """
-        di, dj, dk, dl = ls.shape
-        ls = ls.swapaxes(1,3).reshape(-1,dj) # stick i,k,l together, first need to switch j,k
-        # compute QR decomposition of the left matrix
-        ls, _r = qr(ls, overwrite_a=True, mode='economic') 
-        ls = ls.reshape(di,dl,dk,-1).swapaxes(3,1)
-        # multiply matrix R into the right matrix
-        rs = np.tensordot(_r, rs, axes=1)
-        return ls, rs
-    
-    @staticmethod
-    def _rq_step(ls,rs):
-         di, dj, dk, dl = rs.shape
-         rs = rs.reshape(di,-1)
-         # compute RQ decomposition of the right matrix
-         _r, rs = rq(rs, overwrite_a=True, mode='economic')
-         rs = rs.reshape(-1,dj,dk,dl)
-         # multiply matrix R into the left matrix
-         ls = np.tensordot(ls, _r, axes=(1,0)).transpose(0,3,1,2)
-         return ls, rs
     
     def __bot(self):
         assert self.As[0].shape[0]==self.As[-1].shape[1]==1

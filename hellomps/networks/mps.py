@@ -6,14 +6,13 @@ __author__='Xianrui Yin'
 
 import numpy as np
 #from numba import jit
-from scipy.linalg import qr, rq, norm
 
 from copy import deepcopy
 import logging
 logging.basicConfig(level=logging.INFO)
 
 
-from .operations import qr_step, rq_step, merge, split
+from .operations import qr_step, merge, split, orthonormalizer
 
 __all__ = ['MPS', 'as_mps', 'inner', 'compress']
 
@@ -46,7 +45,7 @@ class MPS(object):
 
     def __init__(self, As:list) -> None:
         self.As = As
-        self.__N = len(As)
+        self._N = len(As)
         self.__bot()
 
     @classmethod
@@ -85,49 +84,7 @@ class MPS(object):
         return cls(As)
 
     def orthonormalize(self, mode:str, center_idx=None):
-        """
-        Transforming the MPS into canaonical forms by doing successive QR decompositions
-
-        Parameters:
-            mode: right, left, mixed. When choosing mixed, the corresponding index of the
-            orthogonality center must be given
-            center_idx: the index of the orthogonality center
-
-        Return: None
-
-        Notes:
-            scipy.linalg.qr, which we use here, only accepts 2-d arrays (matrices) as
-            inputs to be diagonalized. Therefore, one must first combine the physical
-            and matrix leg by doing a reshape, before calling qr().
-            On the other hand, numpy.linalg.qr can take in (N>2)-d arrays, which are 
-            regarded as stacks of matrices residing on the last 2 dimensions. Consequently,
-            one can call qr() with the original tensors. In this regard, [physical, 
-            left bond, right bond] indexing is preferred.
-        """
-
-        if mode == 'right':
-            for i in range(self.__N-1, 0,-1):
-                 self[i-1], self[i] = rq_step(self[i-1], self[i])
-            #self[0], norm = rq_step(np.ones([1,1,1], self[0]))
-            self[0] /= norm(self[0].squeeze())
-        elif mode == 'left':
-            for i in range(self.__N - 1):
-                self[i], self[i+1] = qr_step(self[i], self[i+1])
-            #self[-1], norm = qr_step(self[-1], np.ones([1,1,1]))
-            #norm = norm.ravel()
-            self[-1] /= norm(self[-1].squeeze())
-        elif mode == 'mixed':
-            #assert isinstance(center_idx, int)
-            assert center_idx > 0
-            assert center_idx < self.__N
-            for i in range(center_idx):
-                self[i], self[i+1] = qr_step(self[i], self[i+1])
-            for i in range(self.__N-1,center_idx,-1):
-                self[i-1], self[i] = rq_step(self[i-1], self[i])
-            self[center_idx] /= norm(self[center_idx].squeeze())
-        else:
-             raise ValueError(
-                  'Mode argument should be one of left, right or mixed')
+        orthonormalizer(self, mode, center_idx)
 
     @property
     def physical_dims(self):
@@ -142,7 +99,7 @@ class MPS(object):
             cache = self.As
             S = []
             self.orthonormalize(mode='right')
-            for i in range(self.__N - 1):
+            for i in range(self._N - 1):
                 self[i], self[i+1] = qr_step(self[i], self[i+1])
                 s = np.linalg.svd(self[i+1],full_matrices=False,compute_uv=False)
                 s = s[s>1.e-15]
@@ -166,11 +123,11 @@ class MPS(object):
         if `idx` is an integer, `op` must be a single operator for this specific physical site
         """
         if isinstance(op, list):
-            assert len(op) == self.__N
+            assert len(op) == self._N
             cache = self.As
             exp = []
             self.orthonormalize(mode='right')
-            for i in range(self.__N-1):
+            for i in range(self._N-1):
                 amp = self[i]   # amplitude in the Schmidt basis
                 opc = np.tensordot(amp, op[i], axes=(2,1)) # apply local operator
                 res = np.tensordot(amp.conj(), opc, axes=3)
@@ -198,11 +155,11 @@ class MPS(object):
         if `idx` is an integer, `op` must be a single two-local operator for this specific pair of neighbouring site
         """
         if isinstance(op, list):
-            assert len(op) == self.__N-1
+            assert len(op) == self._N-1
             cache = self.As
             exp = []
             self.orthonormalize(mode='right')
-            for i in range(self.__N-1):
+            for i in range(self._N-1):
                 j = i+1
                 amp = merge(self[i], self[j])   # amplitude in the Schmidt basis
                 opc = np.tensordot(amp, op[i], axes=([2,3],[2,3])) # apply local operator
@@ -246,7 +203,7 @@ class MPS(object):
         return MPS([A.conj() for A in self])
     
     def __len__(self):
-        return self.__N
+        return self._N
     
     def __getitem__(self, idx: int):
         return self.As[idx]
@@ -260,7 +217,7 @@ class MPS(object):
     def __bot(self):
         assert self.As[0].shape[0]==self.As[-1].shape[1]==1
         # check bond dims of neighboring tensors
-        for i in range(self.__N-1):
+        for i in range(self._N-1):
              assert self.As[i].shape[1] == self.As[i+1].shape[0]
 
 def as_mps(psi: np.ndarray, phy_dims:list):

@@ -1,12 +1,11 @@
 Near term:
 1. Check the individual tensor in uMPO, if they are close to identities.
-2. Incoporate more codes into `operation.py`, e.g. orthonormalize(), site_expectation_value(), ...
+2. Incoporate more codes into `operation.py`, e.g. site_expectation_value(), ...
 3. Disable caching when calculating expectation values and entropies?
 4. apply directly the two site unitaries without first splitting and assembling into a big unitary MPO. Compare
 performances.
 5. Inspect the norm profile of the LPTN.
 6. How to set the tolerence while splitting a two-site tensor in our guess state during compression? Test on 3 regimes?
-7. Unify qr_step() and rq_step().
 
 Middle term:
 1. Write a Lanzcos method for (Hermitian) matrix exponential. Alternatively, use scipy.sparse.linalg but a LinerOperator implementation of uMPO might be needed. Don't forget to do some benchmarking.

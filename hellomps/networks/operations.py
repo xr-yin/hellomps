@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.linalg import qr, rq
+from scipy.linalg import qr, rq, norm
 from copy import deepcopy
 #from numba import jit
 
@@ -12,70 +12,152 @@ __all__ = ['qr_step', 'rq_step', 'split', 'merge', 'mul', 'apply_mpo', 'zip_up']
 
 
 def qr_step(ls,rs):
-    """Move the orthogonality center one site to the right.
+    r"""Move the orthogonality center one site to the right.
     
-    Given two neighboring MPS tensors as following,
+    Given two neighboring MPS (MPO) tensors as following,
           2,k         2,k
            |           |
         ---ls---    ---rs--- 
         0,i  1,j    0,i  1,j
+
+    \        2,k           2,k       \
+    \         |             |        \
+    \     ----ls----    ----rs----   \
+    \     0,i |  1,j    0,i | 1,j    \
+    \        3,l           3,l       \
     compute the QR decompostion of ls, and multiply r with rs.
 
     Parameters
     ----------
-    ls : ndarray, ndim==3
+    ls : ndarray, ndim==3 (or 4)
         local MPS tensor on the left, to be QR decomposed
-    rs : ndarray, ndim==3
+    rs : ndarray, ndim==3 (or 4)
         local MPS tensor on the right
 
     Return
     --------
-    ls_new : ndarray, ndim==3
+    ls_new : ndarray, ndim==3 (or 4)
         left orthonormal MPS tensor
-    rs_new : ndarray, ndim==3
+    rs_new : ndarray, ndim==3 (or 4)
         new orthogonality cneter
     """
-    di, dj, dk = ls.shape
-    ls = ls.transpose(0,2,1).reshape(-1,dj) # stick i,k together, first need to switch j,k
-    # compute QR decomposition of the left matrix
-    ls_new, _r = qr(ls, overwrite_a=True, mode='economic') 
-    ls_new = ls_new.reshape(di,dk,-1).transpose(0,2,1)
+    if ls.ndim == 3:
+        di, dj, dk = ls.shape
+        ls = ls.swapaxes(1,2).reshape(-1,dj) # stick i,k together, first need to switch j,k
+        # compute QR decomposition of the left matrix
+        ls_new, _r = qr(ls, overwrite_a=True, mode='economic') 
+        ls_new = ls_new.reshape(di,dk,-1).swapaxes(1,2)
+    elif ls.ndim == 4:
+        di, dj, dk, dl = ls.shape
+        ls = ls.swapaxes(1,3).reshape(-1,dj) # stick i,k,l together, first need to switch j,k
+        # compute QR decomposition of the left matrix
+        ls_new, _r = qr(ls, overwrite_a=True, mode='economic') 
+        ls_new = ls_new.reshape(di,dl,dk,-1).swapaxes(3,1)
+    else:
+        raise ValueError('the inputs must be both rank-3 or rank-4 tensors.')
     # multiply matrix R into the right matrix
     rs_new = np.tensordot(_r, rs, axes=1)
     return ls_new, rs_new
 
 def rq_step(ls,rs):
-    """Move the orthogonality center one site to the left.
+    r"""Move the orthogonality center one site to the left.
     
     Given two neighboring MPS tensors as following,
           2,k         2,k
            |           |
         ---ls---    ---rs--- 
         0,i  1,j    0,i  1,j
+
+    \        2,k           2,k       \
+    \         |             |        \
+    \     ----ls----    ----rs----   \
+    \     0,i |  1,j    0,i | 1,j    \
+    \        3,l           3,l       \
     compute the QR decompostion of ls, and multiply r with rs.
 
     Parameters
     ----------
-    ls : ndarray, ndim==3
+    ls : ndarray, ndim==3 (or 4)
         local MPS tensor on the left
-    rs : ndarray, ndim==3
+    rs : ndarray, ndim==3 (or 4)
         local MPS tensor on the right, to be RQ decomposed
 
     Return
     ----------
-    ls_new : ndarray, ndim==3
+    ls_new : ndarray, ndim==3 (or 4)
         new orthogonality cneter
-    rs_new : ndarray, ndim==3
+    rs_new : ndarray, ndim==3 (or 4)
         right orthonormal MPS tensor
     """
-    di, dj, dk = rs.shape
-    rs = rs.reshape(di,-1)
-    # compute RQ decomposition of the right matrix
-    _r, rs_new = rq(rs, overwrite_a=True, mode='economic')
-    rs_new = rs_new.reshape(-1,dj,dk)
-    # multiply matrix R into the left matrix
-    ls_new = np.tensordot(ls, _r, axes=(1,0)).transpose(0,2,1)
+    if rs.ndim == 3:
+        di, dj, dk = rs.shape
+        rs = rs.reshape(di,-1)
+        # compute RQ decomposition of the right matrix
+        _r, rs_new = rq(rs, overwrite_a=True, mode='economic')
+        rs_new = rs_new.reshape(-1,dj,dk)
+        # multiply matrix R into the left matrix
+        ls_new = np.tensordot(ls, _r, axes=(1,0)).transpose(0,2,1)
+    elif rs.ndim == 4:
+        di, dj, dk, dl = rs.shape
+        rs = rs.reshape(di,-1)
+        # compute RQ decomposition of the right matrix
+        _r, rs_new = rq(rs, overwrite_a=True, mode='economic')
+        rs_new = rs_new.reshape(-1,dj,dk,dl)
+        # multiply matrix R into the left matrix
+        ls_new = np.tensordot(ls, _r, axes=(1,0)).transpose(0,3,1,2)    
     return ls_new, rs_new
+
+def orthonormalizer(self, mode:str, center_idx=None):
+    r"""
+    Transforming the MPS (MPO) into canaonical forms by doing successive QR decompositions.
+
+    Parameters
+    ----------
+    mode : str
+        'right', 'left', 'mixed'. When choosing 'mixed,' the corresponding index of the
+        orthogonality center must be given
+    center_idx : int
+        the index of the orthogonality center
+
+    Return
+    ----------
+    None
+
+    Notes
+    ----------
+    scipy.linalg.qr, which we use here, only accepts 2-d arrays (matrices) as inputs to 
+    be decomposed. Therefore, one must first combine the physical and matrix leg by doing 
+    a reshape, before calling qr().
+    
+    On the other hand, numpy.linalg.qr can take in (N>2)-d arrays, which are regarded 
+    as stacks of matrices residing on the last 2 dimensions. Consequently, one can call 
+    qr() with the original tensors. In this regard, [physical, left bond, right bond] 
+    indexing is preferred.
+    """
+
+    if mode == 'right':
+        for i in range(self._N-1, 0,-1):
+                self[i-1], self[i] = rq_step(self[i-1], self[i])
+        #self[0], norm = rq_step(np.ones([1,1,1], self[0]))
+        self[0] /= norm(self[0].squeeze())
+    elif mode == 'left':
+        for i in range(self._N - 1):
+            self[i], self[i+1] = qr_step(self[i], self[i+1])
+        #self[-1], norm = qr_step(self[-1], np.ones([1,1,1]))
+        #norm = norm.ravel()
+        self[-1] /= norm(self[-1].squeeze())
+    elif mode == 'mixed':
+        #assert isinstance(center_idx, int)
+        assert center_idx > 0
+        assert center_idx < self._N
+        for i in range(center_idx):
+            self[i], self[i+1] = qr_step(self[i], self[i+1])
+        for i in range(self._N-1,center_idx,-1):
+            self[i-1], self[i] = rq_step(self[i-1], self[i])
+        self[center_idx] /= norm(self[center_idx].squeeze())
+    else:
+            raise ValueError(
+                'Mode argument should be one of left, right or mixed')
 
 def split(theta, mode:str, tol:float, m_max=None):
     '''
