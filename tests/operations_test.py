@@ -92,23 +92,6 @@ class TestOperations(unittest.TestCase):
         C = mul(A, ampo)
         self.assertTrue(np.allclose(C.to_matrix(), A.to_matrix() @ ampo.to_matrix()))
 
-    def test_load_right_bond_tensors(self):
-
-        rng = np.random.default_rng()
-        N = rng.integers(5,10)
-        m_max = rng.integers(4,9)
-        phy_dims = rng.integers(2, 5, size=N)
-        O = MPO.gen_random_mpo(N, m_max, phy_dims)
-        psi = MPS.gen_random_state(N, m_max, phy_dims)
-        phi = MPS.gen_random_state(N, m_max, phy_dims)
-
-        RBT = load_right_bond_tensors(O, psi, phi)
-        self.assertEqual(len(RBT), N+1)
-        self.assertEqual([_.shape for _ in RBT[:-1]],
-                         [(i,j,k) for i,j,k in zip(psi.bond_dims[1:], O.bond_dims[1:], phi.bond_dims[1:])])
-        self.assertEqual(RBT[-1].shape, (1,1,1))
-        self.assertTrue(np.allclose(inner(psi,mul(O,phi)), RBT[-1].ravel()))
-
     def test_apply_mpo(self):
 
         rng = np.random.default_rng()
@@ -135,10 +118,25 @@ class TestOperations(unittest.TestCase):
         O.orthonormalize('right')
         psi = MPS.gen_random_state(N, m_max, phy_dims)
         psi.orthonormalize('right')
-
+        # test start from 'left'
         Opsi = mul(O, psi)
-        zip_up(O, psi, 1e-10)
+        zip_up(O, psi, 1e-10, start='left')
         self.assertAlmostEqual(inner(Opsi, psi), np.sqrt(inner(Opsi,Opsi)*inner(psi,psi)), 9)
+        # now psi is in left canonical form
+        for A in psi.As:
+            A = np.transpose(A, (2,0,1))
+            s = A.shape
+            A = np.reshape(A, (s[0]*s[1], s[2]))
+            self.assertTrue(np.allclose(A.conj().T @ A, np.eye(s[2])))
+        # test start from 'right'
+        Opsi = mul(O, psi)
+        zip_up(O, psi, 1e-10, start='right')
+        self.assertAlmostEqual(inner(Opsi, psi), np.sqrt(inner(Opsi,Opsi)*inner(psi,psi)), 9)
+        # now psi is in right canonical form
+        for A in psi.As:
+            s = A.shape
+            A = np.reshape(A, (s[0], s[1]*s[2]))
+            self.assertTrue(np.allclose(A @ A.T.conj(), np.eye(s[0])))
 
 
 if __name__ == '__main__':
