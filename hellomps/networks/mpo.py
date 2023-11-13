@@ -29,6 +29,13 @@ class MPO(object):
     ----------
     As : list
         as described above
+
+    Methods
+    ----------
+    orthonormalize()
+    conj()
+    hc()
+    to_matrix()
     """
     def __init__(self, As) -> None:
         self.As = As 
@@ -51,46 +58,49 @@ class MPO(object):
 
     @property
     def bond_dims(self):
-        return [A.shape[0] for A in self.As] + [self.As[-1].shape[1]]
+        return [A.shape[0] for A in self] + [self[-1].shape[1]]
     
     @property
     def physical_dims(self):
-        return [A.shape[2] for A in self.As]
+        return [A.shape[2] for A in self]
     
     def orthonormalize(self, mode: str, center_idx=None):
-        if mode not in ['left','right','mixed']:
-             raise ValueError(
-                  'Mode argument should be one of left, right or mixed')
-        
         if mode == 'right':
             for i in range(self._N-1, 0,-1):
-                self.As[i-1], self.As[i] = self._rq_step(self.As[i-1], self.As[i])
-            self.As[0] /= norm(self.As[0].squeeze())
+                self[i-1], self[i] = self._rq_step(self[i-1], self[i])
+            self[0] /= norm(self[0].squeeze())
         elif mode == 'left':
             for i in range(self._N - 1):
-                self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1])
-            self.As[-1] /= norm(self.As[-1].squeeze())
-        else:
+                self[i], self[i+1] = self._qr_step(self[i], self[i+1])
+            self[-1] /= norm(self[-1].squeeze())
+        elif mode == 'mixed':
             #assert isinstance(center_idx, int)
             assert center_idx >= 0
             assert center_idx < self._N
             for i in range(center_idx):
-                self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1])
+                self[i], self[i+1] = self._qr_step(self[i], self[i+1])
             for i in range(self._N-1,center_idx,-1):
-                self.As[i-1], self.As[i] = self._rq_step(self.As[i-1], self.As[i])
-            self.As[center_idx] /= norm(self.As[center_idx].squeeze())
+                self[i-1], self[i] = self._rq_step(self[i-1], self[i])
+            self[center_idx] /= norm(self[center_idx].squeeze())
+        else:
+             raise ValueError(
+                  'Mode argument should be one of left, right or mixed')
     
     def conj(self):
         """
-        Complex conjugate of the MPO
+        Return
+        ----------
+        complex conjugate of the MPO
         """
-        return MPO([A.conj() for A in self.As])
+        return MPO([A.conj() for A in self])
     
     def hc(self):
         """
+        Return
+        ----------
         Hermitian conjugate of the MPO
         """
-        return MPO([A.swapaxes(2,3).conj() for A in self.As])
+        return MPO([A.swapaxes(2,3).conj() for A in self])
 
     def to_matrix(self):
         """
@@ -98,9 +108,9 @@ class MPO(object):
         are free to further convert it into a sparse matrix to explore more
         efficient linear algebra algorithms.
         """
-        full = self.As[0]
+        full = self[0]
         for i in range(1,self._N):
-            full = np.tensordot(full, self.As[i],axes=(1,0))
+            full = np.tensordot(full, self[i],axes=(1,0))
             full = np.transpose(full, (0,3,1,4,2,5))
             di, dj, dk1, dk2, dk3, dk4 = full.shape
             full = np.reshape(full, (di, dj, dk1*dk2, dk3*dk4))
@@ -108,6 +118,15 @@ class MPO(object):
         
     def __len__(self):
         return self._N
+    
+    def __getitem__(self, idx: int):
+        return self.As[idx]
+    
+    def __setitem__(self, idx: int, value):
+        self.As[idx] = value
+    
+    def __iter__(self):
+        return iter(self.As)
     
     @staticmethod
     def _qr_step(ls,rs):
