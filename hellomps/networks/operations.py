@@ -12,30 +12,70 @@ __all__ = ['qr_step', 'rq_step', 'split', 'merge', 'mul', 'apply_mpo', 'zip_up']
 
 
 def qr_step(ls,rs):
-    """
+    """Move the orthogonality center one site to the right.
+    
+    Given two neighboring MPS tensors as following,
           2,k         2,k
            |           |
-        ---ls---    ---rs--- = 
-        0,i  1,j    0,i  1,j 
+        ---ls---    ---rs--- 
+        0,i  1,j    0,i  1,j
+    compute the QR decompostion of ls, and multiply r with rs.
+
+    Parameters
+    ----------
+    ls : ndarray, ndim==3
+        local MPS tensor on the left, to be QR decomposed
+    rs : ndarray, ndim==3
+        local MPS tensor on the right
+
+    Return
+    --------
+    ls_new : ndarray, ndim==3
+        left orthonormal MPS tensor
+    rs_new : ndarray, ndim==3
+        new orthogonality cneter
     """
     di, dj, dk = ls.shape
     ls = ls.transpose(0,2,1).reshape(-1,dj) # stick i,k together, first need to switch j,k
     # compute QR decomposition of the left matrix
-    ls, _r = qr(ls, overwrite_a=True, mode='economic') 
-    ls = ls.reshape(di,dk,-1).transpose(0,2,1)
+    ls_new, _r = qr(ls, overwrite_a=True, mode='economic') 
+    ls_new = ls_new.reshape(di,dk,-1).transpose(0,2,1)
     # multiply matrix R into the right matrix
-    rs = np.tensordot(_r, rs, axes=1)
-    return ls, rs
+    rs_new = np.tensordot(_r, rs, axes=1)
+    return ls_new, rs_new
 
 def rq_step(ls,rs):
+    """Move the orthogonality center one site to the left.
+    
+    Given two neighboring MPS tensors as following,
+          2,k         2,k
+           |           |
+        ---ls---    ---rs--- 
+        0,i  1,j    0,i  1,j
+    compute the QR decompostion of ls, and multiply r with rs.
+
+    Parameters
+    ----------
+    ls : ndarray, ndim==3
+        local MPS tensor on the left
+    rs : ndarray, ndim==3
+        local MPS tensor on the right, to be RQ decomposed
+
+    Return
+    ----------
+    ls_new : ndarray, ndim==3
+        new orthogonality cneter
+    rs_new : ndarray, ndim==3
+        right orthonormal MPS tensor
+    """
     di, dj, dk = rs.shape
     rs = rs.reshape(di,-1)
     # compute RQ decomposition of the right matrix
-    _r, rs = rq(rs, overwrite_a=True, mode='economic')
-    rs = rs.reshape(-1,dj,dk)
+    _r, rs_new = rq(rs, overwrite_a=True, mode='economic')
+    rs_new = rs_new.reshape(-1,dj,dk)
     # multiply matrix R into the left matrix
-    ls = np.tensordot(ls, _r, axes=(1,0)).transpose(0,2,1)
-    return ls, rs
+    ls_new = np.tensordot(ls, _r, axes=(1,0)).transpose(0,2,1)
+    return ls_new, rs_new
 
 def split(theta, mode:str, tol:float, m_max=None):
     '''
