@@ -52,11 +52,18 @@ class ProjOneSite(LinearOperator):
         dimsd = (L.shape[0], R.shape[0], M.shape[2])
         super().__init__(dtype=dtype, dims=dims, dimsd=dimsd)
 
-    def _matvec(self, x: NDArray) -> NDArray:
-        y = np.tensordot(self.L, x, axes=(2,0))
-        y = np.tensordot(y, self.M, axes=([1,3],[0,3]))
-        y = np.tensordot(y, self.R, axes=([1,2],[2,1]))
-        return y.swapaxes(1,2)
+    def _matvec(self, x: NDArray, vectorize=True) -> NDArray:
+        if vectorize:
+            x = x.reshape(self.dims)
+            y = np.tensordot(self.L, x, axes=(2,0))
+            y = np.tensordot(y, self.M, axes=([1,3],[0,3]))
+            y = np.tensordot(y, self.R, axes=([1,2],[2,1]))
+            return y.swapaxes(1,2).reshape(self.shape[1])
+        else:
+            y = np.tensordot(self.L, x, axes=(2,0))
+            y = np.tensordot(y, self.M, axes=([1,3],[0,3]))
+            y = np.tensordot(y, self.R, axes=([1,2],[2,1]))
+            return y.swapaxes(1,2)
     
     def _rmatvec(self, x: NDArray) -> NDArray:
         y = np.tensordot(self.L.conj(), x, axes=(0,0))
@@ -98,13 +105,22 @@ class ProjTwoSite(LinearOperator):
         dims = (L.shape[2], R.shape[2], M1.shape[3], M2.shape[3])
         dimsd = (L.shape[0], R.shape[0], M1.shape[2], M2.shape[2])
         super().__init__(dtype=dtype, dims=dims, dimsd=dimsd)
+        assert self.shape == (np.prod(dimsd), np.prod(dims))
 
-    def _matvec(self, x: NDArray) -> NDArray:
-        y = np.tensordot(self.L, x, axes=(2,0))
-        y = np.tensordot(y, self.M1, axes=([1,3],[0,3]))
-        y = np.tensordot(y, self.M2, axes=([3,2],[0,3]))
-        y = np.tensordot(y, self.R, axes=([1,3],[2,1]))
-        return y.transpose(0,3,1,2)
+    def _matvec(self, x: NDArray, vectorize=True) -> NDArray:
+        if vectorize:
+            x = x.reshape(self.dims)
+            y = np.tensordot(self.L, x, axes=(2,0))
+            y = np.tensordot(y, self.M1, axes=([1,3],[0,3]))
+            y = np.tensordot(y, self.M2, axes=([3,2],[0,3]))
+            y = np.tensordot(y, self.R, axes=([1,3],[2,1]))
+            return y.transpose(0,3,1,2).reshape(self.shape[1])
+        else:
+            y = np.tensordot(self.L, x, axes=(2,0))
+            y = np.tensordot(y, self.M1, axes=([1,3],[0,3]))
+            y = np.tensordot(y, self.M2, axes=([3,2],[0,3]))
+            y = np.tensordot(y, self.R, axes=([1,3],[2,1]))
+            return y.transpose(0,3,1,2)
     
     def _rmatvec(self, x: NDArray) -> NDArray:
         y = np.tensordot(self.L.conj(), x, axes=(0,0))
