@@ -205,7 +205,7 @@ def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
             j = i+1
             x = merge(psi.As[i], psi.As[j])
             eff_O = ProjTwoSite(Ls[i], Rs[j], O.As[i], O.As[j])
-            x = eff_O._matvec(x)
+            x = eff_O._matvec(x, vectorize=False)
             # split the result tensor
             phi.As[i], phi.As[j] = split(x, 'right', tol, m_max)
             # update the left bond tensor LBT[j]
@@ -215,7 +215,7 @@ def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
             x = merge(psi.As[i], psi.As[j])
             # contracting left block LBT[i]
             eff_O = ProjTwoSite(Ls[i], Rs[j], O.As[i], O.As[j])
-            x = eff_O._matvec(x)
+            x = eff_O._matvec(x, vectorize=False)
             # split the result tensor
             phi.As[i], phi.As[j] = split(x, 'left', tol, m_max)
             # update the right bond tensor RBT[i]
