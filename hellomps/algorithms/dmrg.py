@@ -6,11 +6,12 @@
 __author__='Xianrui Yin'
 
 import numpy as np
-from scipy.linalg import qr, rq
 from scipy.sparse.linalg import eigsh
 
+import os
 import logging
 logging.basicConfig(level=logging.ERROR)
+logging.info(f'number of threads in use:{os.environ.get("OMP_NUM_THREADS")}')
 
 from ..networks.mps import MPS
 from ..networks.mpo import MPO
@@ -32,6 +33,10 @@ class DMRG(object):
         Attributes
         ----------
         same as parameters
+        Methods
+        ----------
+        run_one_site()
+        run_two_sites()
     """
 
     def __init__(self, psi:MPS, H: MPO) -> None:

@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-#----------Lindblad evolution for density operators----------
+""" Algorithms for evolving a mixed state in locally purified tensor network (LPTN) 
+representation according to the Lindblad master equation."""
+
+__author__='Xianrui Yin'
 
 import numpy as np
 from scipy.linalg import expm
+
+import logging
+logging.basicConfig(level=logging.ERROR)
 
 from .mps_evolution import TEBD2
 from ..networks.lptn import LPTN
@@ -13,15 +19,33 @@ from ..networks.operations import merge, split
 __all__ = ['LindbladOneSite', 'LindbladTwoSite']
 
 class LindbladOneSite(TEBD2):
-    """
-    Algorithm for evolving a mixed state in locally purified tensor network (LPTN) representation according to the
-    Lindblad master equation.
+    r"""Handles the case when the Lindblad jump operators only act on single sites.
 
-    Parameters:
-        psi: the LPTN to be evolved
-        model: must include the following two attributes
-            hduo: list of ordered two-local Hamiltonian operators
-            Lloc: list of ordered local Lindbaldian jump operators
+    Parameters
+    ----------
+    psi : LPTN
+        the LPTN to be evolved, modification is done in place
+    model : None
+        1D model object, must have the following two properties: `hduo` and `Lloc`.
+
+    Attributes
+    ----------
+    psi : MPS
+        see above
+    hduo : list
+        a list containing two-local Hamiltonian terms involving only nearest neighbors
+    dims : list
+        a list containing local Hilbert space dimensions of each site
+    Lloc : list 
+        a list conataing local Lindbaldian jump operators
+
+    Methods
+    ----------
+    run_first_order()
+    run_second_order()
+    make_krauss()
+    apply_krauss()
+    update_local_two_sites()
     """
     def __init__(self, psi: LPTN, model) -> None:
         self.Lloc = model.Lloc # list containing all (local) jump operators
@@ -52,10 +76,6 @@ class LindbladOneSite(TEBD2):
             for i in range(1, Nbonds, 2):  # full step at odd-even
                 self.update_local_two_sites(i, tol, m_max)
             self.psi.orthonormalize('right')
-            if (n+1)%20 == 0:
-                print(f'{n+1} steps have been completed')
-                print('current bond dims:', self.psi.bond_dims)
-                print('current Krauss dims:', self.psi.krauss_dims)
         for i in range(0, Nbonds, 2):
             self.update_local_two_sites(i, tol, m_max, half=True)
         self.psi.orthonormalize('right')
@@ -77,10 +97,10 @@ class LindbladOneSite(TEBD2):
         for n in range(Nsteps):
             for i in range(0, Nbonds, 2):  # even-odd
                 self.update_local_two_sites(i, tol, m_max)
-            self.psi.orthonormalize('left')
+            self.psi.orthonormalize('right')
             for i in range(1, Nbonds, 2):  # odd-even
                 self.update_local_two_sites(i, tol, m_max)
-            self.psi.orthonormalize('left')
+            self.psi.orthonormalize('right')
             for i in range(Nbonds+1):
                 try:
                     self.apply_krauss(i, tol, k_max)
@@ -88,11 +108,7 @@ class LindbladOneSite(TEBD2):
                     print('except:', e)
                     print(f'Bs[{i}]:{self.B_list[i].shape}')
                     print('Krauss operator:', self.B_list[i])
-            self.psi.orthonormalize('left')
-            if (n+1)%20 == 0:
-                print(f'{n+1} steps have been completed')
-                print('current bond dims:', self.psi.bond_dims)
-                print('current Krauss dims:', self.psi.krauss_dims)
+            self.psi.orthonormalize('right')
     
     def make_krauss(self, dt):
         """
@@ -161,16 +177,34 @@ class LindbladOneSite(TEBD2):
     
 
 class LindbladTwoSite(TEBD2):
-    """
-    Algorithm for evolving a mixed state in locally purified tensor network (LPTN) representation according to the
-    Lindblad master equation.
+    """Handles the case when the Lindblad jump operators act on two neighbouring sites.
 
-    Parameters:
-        psi: the LPTN to be evolved
-        model: must include the following two attributes
-            hduo: list of ordered two-local Hamiltonian operators
-            lduo: list of ordered 2-local Lindbaldian operators
+    Parameters
+    ----------
+    psi : LPTN
+        the LPTN to be evolved, modification is done in place
+    model : None
+        1D model object, must have the following two properties: `hduo` and `lduo`.
 
+    Attributes
+    ----------
+    psi : MPS
+        see above
+    hduo : list
+        a list containing two-local Hamiltonian terms involving only nearest neighbors
+    dims : list
+        a list containing local Hilbert space dimensions of each site
+    Lloc : list 
+        a list conataing two-local Lindbaldian jump operators
+
+    Methods
+    ----------
+    run_second_order()
+    make_krauss()
+    update_local_two_sites()
+
+    Notes
+    ----------
     Be aware there are major architectural differences from both LindbladOneSite and TEBD2.
     """
     def __init__(self, psi: LPTN, model) -> None:
@@ -214,7 +248,7 @@ class LindbladTwoSite(TEBD2):
         theta = np.reshape(theta, theta.shape[:-2]+(-1,))  # Krauss rank all to the right side
         # split and truncate along the bond dimension
         self.psi.As[i], self.psi.As[j] = split(theta, mode="sqrt", tol=tol, m_max=m_max)
-         # split and truncate along the krauss dimension
+        # split and truncate along the krauss dimension
         l, r, p, k = self.psi.As[j].shape
         temp = np.reshape(self.psi.As[j], (l*r*p, k))
         u, s, vt = np.linalg.svd(temp, full_matrices=False)
@@ -254,7 +288,7 @@ class LindbladTwoSite(TEBD2):
                     eLt = np.reshape(eLt, (d,d,d,d))
                     eLt = np.transpose(eLt, (0,2,1,3))
                     eLt = np.reshape(eLt, (d*d,d*d))
-                    assert np.allclose(eLt, eLt.conj().T)
+                    logging.debug(f"Is exp(L*dt) Hermitian?: {np.allclose(eLt, eLt.conj().T)}")
                     B = _cholesky(eLt)
                     B = np.reshape(B, (dl,dr,dl,dr,-1))  # check
                     B_dict[key].append(B)
@@ -264,16 +298,17 @@ class LindbladTwoSite(TEBD2):
                     u = np.reshape(u,(dl,dr,dl,dr))
                     B_dict[key].append(u[:,:,:,:,None])
         self.B_dict = B_dict
-        print('Krauss operators prepared')
+        logging.info('Krauss operators prepared')
 
 
 
 def _cholesky(a):
+    """stablized cholesky decomposition of matrix a"""
     eigvals, eigvecs = np.linalg.eigh(a)
     mask = abs(eigvals) > 1e-15
     eigvals = eigvals[mask]
     eigvecs = eigvecs[:,mask]
     assert min(eigvals) > 0
     B = eigvecs*np.sqrt(eigvals)
-    #print('error:', np.linalg.norm(a-B@B.T.conj()))
+    logging.info(f'error during cholesky decomposition: {np.linalg.norm(a-B@B.T.conj())}')
     return B
