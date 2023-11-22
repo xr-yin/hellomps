@@ -53,7 +53,7 @@ class LPTN(MPO):
     
     @property
     def krauss_dims(self):
-        return [A.shape[3] for A in self.As]
+        return [A.shape[3] for A in self]
 
     def site_expectation_value(self, op, idx=None):
         """
@@ -66,12 +66,12 @@ class LPTN(MPO):
             exp = []
             self.orthonormalize(mode='right')
             for i in range(self._N-1):
-                amp = self.As[i]   # amplitude in the Schmidt basis
+                amp = self[i]   # amplitude in the Schmidt basis
                 opc = np.tensordot(amp, op[i], axes=(2,1)) # apply local operator
                 res = np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)
                 exp.append(np.real_if_close(res))
-                self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1]) # move the orthogonality center
-            amp = self.As[-1]
+                self[i], self[i+1] = self._qr_step(self[i], self[i+1]) # move the orthogonality center
+            amp = self[-1]
             opc = np.tensordot(amp, op[-1], axes=(2,1)) # apply local operator
             res = np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)
             exp.append(np.real_if_close(res))
@@ -81,7 +81,7 @@ class LPTN(MPO):
             assert isinstance(idx, int)
             cache = self.As
             self.orthonormalize(mode='mixed', center_idx = idx)
-            amp = self.As[idx]   # amplitude in the Schmidt basis
+            amp = self[idx]   # amplitude in the Schmidt basis
             opc = np.tensordot(amp, op, axes=(2,1)) # apply local operator
             res = np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)
             self.As = cache
@@ -99,18 +99,18 @@ class LPTN(MPO):
             self.orthonormalize(mode='right')
             for i in range(self._N-1):
                 j = i+1
-                amp = merge(self.As[i], self.As[j])   # amplitude in the Schmidt basis
+                amp = merge(self[i], self[j])   # amplitude in the Schmidt basis
                 opc = np.tensordot(amp, op[i], axes=([2,3],[2,3])) # apply local operator
                 res = np.tensordot(amp.conj().transpose(0,1,4,5,2,3), opc, axes=6)
                 exp.append(np.real_if_close(res))
-                self.As[i], self.As[i+1] = self._qr_step(self.As[i], self.As[i+1]) # move the orthogonality center
+                self[i], self[i+1] = self._qr_step(self[i], self[i+1]) # move the orthogonality center
             self.As = cache
             return exp
         else:
             assert isinstance(idx, int)
             cache = self.As
             self.orthonormalize(mode='mixed', center_idx = idx)
-            amp = merge(self.As[idx],self.As[idx+1])   # amplitude in the Schmidt basis
+            amp = merge(self[idx],self[idx+1])   # amplitude in the Schmidt basis
             opc = np.tensordot(amp, op, axes=([2,3],[2,3])) # apply local operator
             res = np.tensordot(amp.conj().transpose(0,1,4,5,2,3), opc, axes=6)
             self.As = cache
@@ -118,10 +118,26 @@ class LPTN(MPO):
             #return res
 
     def to_density_matrix(self):
-        """
-        density matrix for the locally purified tensor network
+        r"""density matrix for the locally purified tensor network
         \rho = X  X^\dagger
         """
         A = self.hc()
         B = self
         return mul(self, self.hc()).to_matrix()
+    
+    def probabilities(self):
+        """probability amplitudes of each state in the ensemble
+        """
+        Nstates = np.prod([self.krauss_dims])
+        norms = np.zeros(Nstates)
+        kspace = np.arange(Nstates).reshape(self.krauss_dims)
+        for i in range(Nstates):
+            loc = np.where(kspace==i)
+            As = []
+            assert len(self) == len(loc)
+            for A, idx in zip(self, loc):
+                As.append(A[:,:,:,idx])
+            psi = MPS(As)
+            norms[i] = np.linalg.norm(psi.as_array())**2
+        
+        return norms

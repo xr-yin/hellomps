@@ -17,6 +17,18 @@ class TestLPTN(unittest.TestCase):
         self.assertEqual(dm.shape, (np.prod(phy_dims),)*2)
         self.assertTrue(np.allclose(dm, dm.T.conj()))
 
+    def test_orthonormalize(self):
+
+        # $\rho = X X^\dagger$
+        # when $X$ is orthonormalized, the density matrix has trace 1.
+        randomLPTN.orthonormalize('right')
+        self.assertAlmostEqual(np.trace(randomLPTN.to_density_matrix()), 1, 12)
+
+    def test_probabilties(self):
+        norms = randomLPTN.probabilities()
+        self.assertAlmostEqual(np.sum(norms), 1., 12)
+
+
 if __name__ == '__main__':
 
     rng = np.random.default_rng()
