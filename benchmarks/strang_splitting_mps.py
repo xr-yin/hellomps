@@ -49,7 +49,7 @@ def main(N: int, tmax: float, num_intervals: int):
         t0 = time.time()
         labs[0].run(*default_params)
         t1 = time.time()
-        labs[1].run(*default_params, backend='zip_up')
+        labs[1].run(*default_params, backend='zip-up')
         t2 = time.time()
         labs[2].run(*default_params, backend='variational')
         t3 = time.time()

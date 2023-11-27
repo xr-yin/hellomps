@@ -3,9 +3,6 @@ from scipy.linalg import qr, rq, norm
 from copy import deepcopy
 #from numba import jit
 
-import logging
-logging.basicConfig(level=logging.WARNING)
-
 from ..networks.mpo_projected import *
 
 __all__ = ['qr_step', 'rq_step', 'split', 'merge', 'mul', 'apply_mpo', 'zip_up']
@@ -148,7 +145,7 @@ def orthonormalizer(self, mode:str, center_idx=None):
         self[-1] /= norm(self[-1].squeeze())
     elif mode == 'mixed':
         #assert isinstance(center_idx, int)
-        assert center_idx > 0
+        assert center_idx >= 0
         assert center_idx < self._N
         for i in range(center_idx):
             self[i], self[i+1] = qr_step(self[i], self[i+1])
@@ -228,7 +225,7 @@ def mul(A, B):
     """
     Calculate the product of a MPO and a MPS (or another MPO) by direct 
     contraction. The dimensions of the bonds will simply multiply. This 
-    When B is a MPS, you should consider using apply_mpo() or zip_up() 
+    When B is a MPS, you should consider using apply_mpo() or zip-up() 
     instead for achieving optimzed bond dimension.
 
     Parameters:
