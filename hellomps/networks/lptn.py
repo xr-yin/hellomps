@@ -9,19 +9,29 @@ from scipy.linalg import norm
 
 from .mps import MPS
 from .mpo import MPO
-from .operations import merge, mul
+from .operations import merge, mul, qr_step
 
 class LPTN(MPO):
-    """
-    class for locally purified tensor networks
+    """Locally purified tensor networks
     
-    Parameters:
-        As: list of local rank-4 tensors, each tensor has the following shape
+    Parameters
+    ----------
+        As : list
+            list of local rank-4 tensors, each tensor has the following shape
                 k
                 |
-            i---A---j            (i, j, k, l)
+            i---A---j       (i, j, k, l)
                 |
                 l
+    
+    Methods
+    ----------
+    site_expectation_value(idx=None)
+        compute the expectation value of local (one-site) observables
+    bond_expectation_value(idx=None)
+        compute the expectation value of local two-site observables
+    to_density_matrix()
+    probabilities()
     """
     def __init__(self, As) -> None:
         super().__init__(As)
@@ -57,8 +67,15 @@ class LPTN(MPO):
 
     def site_expectation_value(self, op, idx=None):
         """
-        if `idx` is None, `op` must be a list of ordered local operators for every physical site
-        if `idx` is an integer, `op` must be a single operator for this specific physical site
+        Parameters
+        ----------
+        op : list or NDArray
+            list of local two-site operators or a single local two-site operator
+        idx : int or None
+            if `idx` is None, `op` must be a list of ordered local operators for 
+            every physical site.
+            if `idx` is an integer, `op` must be a single operator for this specific 
+            physical site.
         """
         if isinstance(op, list):
             assert len(op) == self._N
@@ -70,7 +87,7 @@ class LPTN(MPO):
                 opc = np.tensordot(amp, op[i], axes=(2,1)) # apply local operator
                 res = np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)
                 exp.append(np.real_if_close(res))
-                self[i], self[i+1] = self._qr_step(self[i], self[i+1]) # move the orthogonality center
+                self[i], self[i+1] = qr_step(self[i], self[i+1]) # move the orthogonality center
             amp = self[-1]
             opc = np.tensordot(amp, op[-1], axes=(2,1)) # apply local operator
             res = np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)
@@ -89,8 +106,15 @@ class LPTN(MPO):
         
     def bond_expectation_value(self, op, idx=None):
         """
-        if `idx` is None, `op` must be a list of ordered two-local operators for every pair of neighbouring site
-        if `idx` is an integer, `op` must be a single two-local operator for this specific pair of neighbouring site
+        Parameters
+        ----------
+        op : list or NDArray
+            list of local two-site operators or a single local two-site operator
+        idx : int or None
+            if `idx` is None, `op` must be a list of ordered two-local operators 
+            for every pair of neighbouring site.
+            if `idx` is an integer, `op` must be a single two-local operator for 
+            this specific pair of neighbouring site.
         """
         if isinstance(op, list):
             assert len(op) == self._N-1
