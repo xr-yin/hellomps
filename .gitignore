@@ -176,3 +176,4 @@ cython_debug/
 
 # My configurations
 playground/*
+*png
