@@ -1,38 +1,52 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-#----------time_evolution_algorithms----------
+#----------Time Evolution Algorithms for (pure) MPS----------
 
 __author__='Xianrui Yin'
 
 import numpy as np
 from scipy.linalg import qr, rq
-from scipy.sparse.linalg import expm
+from scipy.sparse.linalg import expm, eigsh
 
-import gc
 import os
 import logging
-logging.basicConfig(level=logging.ERROR)
 logging.info(f'number of threads in use:{os.environ.get("OMP_NUM_THREADS")}')
 
 from ..networks.mps import MPS
 from ..networks.mpo import MPO
 from ..networks.operations import *
+from ..networks.mpo_projected import *
 
 __all__ = ['TEBD2', 'tMPS']
 
 class TEBD2(object):
-    '''
-    Second order 'TEBD' algorithm for 1D Hamiltonian with only nearest-neighbour coupling
+    r'''Second order 'TEBD' algorithm for 1D Hamiltonian with only nearest-neighbour 
+    coupling
     
-    Parameters:
-        psi: MPS to be evolved
-        hduo: local Hamiltonian terms involving only two nearest neighbors
+    Parameters
+    ----------
+    psi : MPS
+        initial MPS state to be evolved, modification is done in place
+    model : None
+        1D model object, must have property `hduo`
 
-    Attributes:
-        psi, hduo, dims
+    Attributes
+    ----------
+    psi : MPS
+        see above
+    hduo : list
+        a list containing two-local Hamiltonian terms involving only nearest neighbors
+    dims : list
+        a list containing local Hilbert space dimensions of each site
 
-    Remark:
+    Methods
+    ----------
+    run()
+        time evolve the MPS
+
+    Remark
+    ----------
     This is not TEBD in strict sense because we are not truncating in the mixed
     canonical form. Rather, this looks like a hybridation of TEBD and tMPS.
     '''
@@ -43,7 +57,23 @@ class TEBD2(object):
         self.dt = None
         self._bot()
     
-    def run(self, Nsteps, dt:float, tol:float, m_max:int):
+    def run(self, Nsteps:int, dt:float, tol:float, m_max:int):
+        """
+        Parameters
+        ----------
+        Nsteps : int
+            total time steps
+        dt : float
+            time step size, real (imaginary) dt implies imaginary (real) time evolution
+        tol : float
+            largest discarded singular value during a SVD
+        m_max : int
+            allowed maximum MPS bond dimension
+
+        Return
+        ----------
+        None
+        """
         Nbonds = len(self.psi)-1
         if dt != self.dt:
             self.make_unitaries(dt)
@@ -79,9 +109,8 @@ class TEBD2(object):
         self.psi.As[i], self.psi.As[j] = split(theta, "sqrt", tol, m_max)
         
     def make_unitaries(self, dt:float):
-        '''
-        calculate the two-site time evolution operator
-        note that real dt means imaginary time evolution
+        '''calculate the two-site time evolution operator
+        Note that real dt means imaginary time evolution
         '''
         u_duo = {'half': [], 'full': []}
         for idx, hh in enumerate(self.hduo):
@@ -89,7 +118,7 @@ class TEBD2(object):
             u_duo['full'].append(np.reshape(expm(-hh*dt), (dk1,dk2,dk1,dk2)))
             u_duo['half'].append(np.reshape(expm(-hh*dt/2), (dk1,dk2,dk1,dk2)))
         self.u_duo = u_duo
-        print('Unitaries prepared')
+        logging.info('Unitaries prepared')
 
     def _bot(self):
         assert len(self.hduo) == len(self.psi) -1
@@ -102,8 +131,29 @@ class TimedependentTEBD(TEBD2):
 
 class tMPS(object):
     """
-    Apply the unitary time evolution operator in MPO form, compress the 
-    MPS after a few updates.
+    Apply the unitary time evolution operator in MPO form, compress the MPS after 
+    a few updates.
+
+    Parameters
+    ----------
+    psi : MPS
+        initial MPS state to be evolved, modification is done in place
+    model : None
+        1D model object, must have property `hduo`
+
+    Attributes
+    ----------
+    psi : MPS
+        see above
+    hduo : list
+        a list containing two-local Hamiltonian terms involving only nearest neighbors
+    dims : list
+        a list containing local Hilbert space dimensions of each site
+
+    Methods
+    ----------
+    run(backend='zip-up', compress_sweeps=2)
+        time evolve the MPS
     """
     def __init__(self, psi:MPS, model) -> None:
         self.psi = psi
@@ -131,94 +181,108 @@ class tMPS(object):
             half_e = MPO(half_e)
             full_o = MPO(full_o)
             self.uMPO = mul(half_e, mul(full_o, half_e))
-            #del half_e
-            #del full_o
-            #gc.collect()
 
-    def run(self, Nsteps:int, dt:float, tol:float, m_max=None, backend='zip_up', compress_sweeps=2):
+    def run(self, Nsteps:int, dt:float, tol:float, m_max=None, backend='zip-up', compress_sweeps=2):
+        """
+        Parameters
+        ----------
+        Nsteps : int
+            total time steps
+        dt : float
+            time step size, real (imaginary) dt implies imaginary (real) time evolution
+        tol : float
+            largest discarded singular value during a SVD
+        m_max : int
+            allowed maximum MPS bond dimension
+        backend : str
+            'zip-up' or 'variational', used for MPO-MPS multiplication
+        compress_sweeps : int
+            when backend=='variational', the number of compress sweeps that will be performed
+
+        Notes
+        ----------
+        When the MPS bond dimension is alreay large, and the MPO in question is closed to the 
+        identity, 'variational' backend is recommended. Therefore, one might first start out 
+        with 'zip-up' and switch to 'variational' at some point when the MPS bond dimensions 
+        have grown to a certain value.        
+        """
         self.make_uMPO(dt)
-        if backend == 'zip_up':
+        if backend == 'zip-up':
             self.psi.orthonormalize('right')
             for i in range(Nsteps//2):
                 zip_up(self.uMPO, self.psi, tol, start='left')
                 zip_up(self.uMPO, self.psi, tol, start='right')
             if Nsteps % 2:
                 zip_up(self.uMPO, self.psi, tol, start='left')
-        elif backend == 'varational':
+        elif backend == 'variational':
             for i in range(Nsteps):
                 apply_mpo(self.uMPO, self.psi, tol, m_max, max_sweeps=compress_sweeps, overwrite=True)
         else:
-            raise ValueError('backend can only be zip-up or varational.')
+            raise ValueError('backend can only be zip-up or variational.')
 
 
-class TDVPOneSite(object):
+class TDVP(object):
     '''
-    Time evolution algorthim class based on time dependent variational principle
+    Time dependent variational principle.
 
-    Parameters:
-        psi: MPS to be evolved
-        dt: time step for a full sweep
-        M: total number of steps  t=M*dt
+    Parameters
+    ----------
+    psi : MPS 
+        the initial MPS to be evolved, modification is done in place
+    H : MPO
+        model Hamiltonian in `MPO` format
 
-    Attributes:
-        psi:
-        dt:
+    Attributes
+    ----------
+    same as parameters
 
-    Methods:
-        sweep:
+    Methods
+    ----------
+    run_one_site()
+    run_two_site()
     '''
-    def __init__(self, psi:MPS, dt:float, M:int):
+    def __init__(self, psi:MPS, H: MPO) -> None:
+        assert len(psi) == len(H)
         self.psi = psi
-        self.dt = dt /2
-        self.M = M
-        raise NotImplementedError('Not implemented yet')
-
-
-    def train(self):
-        t = 0
-        '''symmetric one-site''' 
-        for i in range(self.M):
-            ''' left to right sweep '''
-            # initialize a right canonical form
-            self.psi.orthonormalize(mode='right')
-            self.sweep(t)
-            t+=self.dt
-
+        self.H = H
             
-    def sweep(self,t):
-        '''symmetric one-site''' 
+    def run_one_stie(self, dt: float, Nsteps: int, iter: int):
+        """Symmetric one site update
 
-        self.psi.orthonormalize(mode='right')
-        for idx in range(1,len(self.psi)):
-            # compute one-site effective Hamiltonian H(n)
+        Parameters
+        ----------
+        dt : float
+            time step
+        Nsteps : int
+            total number of steps, one sweep goes from left to right and back from right to left.
+        """
+        N = len(self.psi)
+        self.psi.orthonormalize('right')
+        Ls = LeftBondTensors(N)
+        Rs = RightBondTensors(N)
+        Rs.load(self.psi, self.psi, self.H)
+        for n in range(Nsteps):
+            # each of the first and last tensor are only attended once during a back and forth sweep
+            for i in range(N-1): # sweep from left to right
+                # effective one-stie Hamiltonian
+                eff_H = ProjOneSite(Ls[i], Rs[i], self.H[i])
+                eigvals, eigvecs = eigsh(eff_H, k=1, which='SA', v0=self.psi[i], return_eigenvectors=True)
+                # effective zero-site Hamiltonian
+                eff_K = ProjZeroSite(Ls[i+1], Rs[i])
+                # TODO: implement expm()
+                self.psi[i] = np.reshape(self.psi[i], eff_H.dims)
 
+                self.psi[i], self.psi[i+1] = qr(self.psi[i])
+                Ls.update(i+1, self.psi[i].conj(), self.psi[i], self.H[i])
+            for i in range(N-1,0,-1):
+                eff_H = ProjOneSite(Ls[i], Rs[i], self.H[i])
+                _, self.psi[i] = eigsh(eff_H, k=iter, which='SA', v0=self.psi[i], return_eigenvectors=True)
+                self.psi[i] = np.reshape(self.psi[i], eff_H.dims)
+                self.psi[i-1], self.psi[i] = rq_step(self.psi[i-1], self.psi[i])
+                Rs.update(i-1, self.psi[i].conj(), self.psi[i], self.H[i])
 
-            self.psi.As[idx]  # evolve A_C(n) forward in time
+class TimedependentTDVP(TDVP):
 
-
-            # QR decompose evolved A_C(n) into A_L(n) @ C_tilde(n)
-            A_L, C_tilde = qr()
-
-
-            # compute zero-site effective Hamiltonian K(n)
-            pass
-
-            C_tilde  # evolve C_tilde backwards in time
-
-            
-            t += self.dt
-            # right to left sweep
-        for idx in range(len(self.psi)-1, 0, -1):
-
-            t += self.dt
-            pass
-
-class TimedependentTDVP(TDVPOneSite):
-    
-    def __init__(self, psi: MPS, dt: float, M: int):
-        super().__init__(psi, dt, M)
-        raise NotImplementedError('Not implemented yet')
-
-
-if __name__ == "__main__":
-    pass
+    def __init__(self, psi: MPS, H: MPO) -> None:
+        super().__init__(psi, H)
+        raise NotImplementedError('not implemented yet')
