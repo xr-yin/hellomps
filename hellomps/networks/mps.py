@@ -9,8 +9,6 @@ import numpy as np
 
 from copy import deepcopy
 import logging
-logging.basicConfig(level=logging.INFO)
-
 
 from .operations import qr_step, merge, split, orthonormalizer
 
@@ -119,8 +117,15 @@ class MPS(object):
 
     def site_expectation_value(self, op, idx=None):
         """
-        if `idx` is None, `op` must be a list of ordered local operators for every physical site
-        if `idx` is an integer, `op` must be a single operator for this specific physical site
+        Parameters
+        ----------
+        op : list or NDArray
+            list of local two-site operators or a single local two-site operator
+        idx : int or None
+            if `idx` is None, `op` must be a list of ordered local operators for 
+            every physical site.
+            if `idx` is an integer, `op` must be a single operator for this specific 
+            physical site.
         """
         if isinstance(op, list):
             assert len(op) == self._N
@@ -151,8 +156,15 @@ class MPS(object):
         
     def bond_expectation_value(self, op, idx=None):
         """
-        if `idx` is None, `op` must be a list of ordered two-local operators for every pair of neighbouring site
-        if `idx` is an integer, `op` must be a single two-local operator for this specific pair of neighbouring site
+        Parameters
+        ----------
+        op : list or NDArray
+            list of local two-site operators or a single local two-site operator
+        idx : int or None
+            if `idx` is None, `op` must be a list of ordered two-local operators 
+            for every pair of neighbouring site.
+            if `idx` is an integer, `op` must be a single two-local operator for 
+            this specific pair of neighbouring site.
         """
         if isinstance(op, list):
             assert len(op) == self._N-1
@@ -177,9 +189,6 @@ class MPS(object):
             res = np.tensordot(amp.conj(), opc, axes=4)
             self.As = cache
             return np.real_if_close(res)
-
-    def density_matrix(self):
-        pass
 
     def transfer_matrix(self):
         pass
@@ -235,15 +244,18 @@ def as_mps(psi: np.ndarray, phy_dims:list):
     return MPS(As)
 
 def inner(amps: MPS, bmps: MPS):
-    """
-    Evaluating the inner product of two MPSs by bubbling, complexity=O(D^3)
+    """Evaluating the inner product of two MPSs by bubbling, complexity=O(D^3)
 
-    Parameters:
-        amps: the bra MPS
-        bmps: the ket MPS
+    Parameters
+    ----------
+    amps : MPS
+        the bra MPS
+    bmps : MPS
+        the ket MPS
 
-    Return:
-        the inner product <amps|bmps>
+    Return
+    ----------
+    the inner product <amps|bmps>
     """
     assert len(amps) == len(bmps)
     res = np.tensordot(amps[0].conj(),bmps[0],axes=([0,2],[0,2]))
@@ -256,9 +268,26 @@ def inner(amps: MPS, bmps: MPS):
             logging.error(f'i={i},shape b:{bmps[i].shape},shape a:{amps[i].shape}, shape res:{res[i].shape}')
     return res.squeeze()
 
-def compress(psi:MPS, tol:float, max_sweeps:int, m_max:int, overwrite=False):
-    """
-    Two-site varational compression of a MPS by using a SVD-truncated state as an initial guess.
+def compress(psi:MPS, tol:float, m_max:int, max_sweeps:int):
+    """Two-site varational compression of a MPS by using a SVD-truncated state as an initial guess.
+
+    Parameters
+    ----------
+    psi : MPS
+        the MPS to be compressed
+    tol : float
+        the largest truncated singular value
+    m_max : int
+        maximum bond dimension
+    max_sweeps : int
+        maximum optimization sweeps
+
+    Return
+    ----------
+    phi : MPS
+        the compressed MPS
+    overlap : float
+        the overlap between psi and phi, i.e. <phi|psi>
     """
     N = len(psi)
     phi = deepcopy(psi)  # overwrite set to False, first copy then orthonormalize
@@ -274,9 +303,7 @@ def compress(psi:MPS, tol:float, max_sweeps:int, m_max:int, overwrite=False):
     # now we arrive at a right canonical MPS
     RBT = _load_right_bond_tensors(psi,phi)
     LBT = [np.ones((1,1))] * (N+1)
-    nsweeps = 0
     for n in range(max_sweeps):
-        logging.info('in the loop')
         for i in range(N-1): # sweep from left to right
             j = i+1
             temp = merge(psi[i],psi[j])
@@ -301,7 +328,7 @@ def compress(psi:MPS, tol:float, max_sweeps:int, m_max:int, overwrite=False):
         RBT[-1] = np.tensordot(psi[0], RBT[0], axes=(1,0))
         RBT[-1] = np.tensordot(RBT[N], phi[0].conj(), axes=([1,2],[2,1]))
         logging.info(f'The overlap recorded in the #{n} sweep are {LBT[-1].ravel()} and {RBT[-1].ravel()}')
-    return phi
+    return phi, RBT[-1].item()
 
 def _load_right_bond_tensors(psi:MPS, phi:MPS):
     """
@@ -319,7 +346,10 @@ def _load_right_bond_tensors(psi:MPS, phi:MPS):
     ----------
     RBT: a list of length N+1. The first N elements are the right bond tensors, 
     i.e. RBT[i] is to the right of the i-th local tensor. The last element, i.e.
-    RBT[-1] == RBT[N] is the inner product of psi and phi.
+    RBT[-1] == RBT[N] is the inner product of psi and phi. The same is true for 
+    LBT defined in compress(). However, if one needs not to keep track of the 
+    overlap in every sweep, simply discard the trailing element in both RBT and 
+    LBT by making them length-N arrays, for reference, in mpo_projected.py.
     """
     assert len(psi) == len(phi)
     N = len(psi)

@@ -247,8 +247,8 @@ def mul(A, B):
     from .mps import MPS
     Os = []
     for a, b in zip(A.As, B.As): 
-        a0, a1, a2, a3 = a.shape
-        b0, b1, b2 = b.shape[:3]
+        a0, a1, a2 = a.shape[:3]
+        b0, b1 = b.shape[:2]
         O = np.tensordot(a, b, axes=(3,2))
         O = np.swapaxes(O, 1, 3)
         O = np.reshape(O, (a0*b0, a2, a1*b1, -1))
@@ -257,19 +257,32 @@ def mul(A, B):
     return MPS([O[:,:,:,0] for O in Os]) if isinstance(B, MPS) else MPO(Os)
 
 def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
-    """
-    Varationally calculate the product of a MPO and a MPS.
+    """Varationally calculate the product of a MPO and a MPS.
 
-    Parameters:
-        O: a MPO
-        psi: a MPS modified in place
+    Parameters
+    ----------
+    O : MPO
+        the operator
+    psi : MPS 
+        the operand
+    tol : float
+        largest discarded singular value in each truncation step
+    m_max : int 
+        largest bond dimension allowed, default is None
+    max_sweeps : int
+        maximum number of optimization sweeps
+    overwrite : Bool
+        if True, psi will be overwritten with the result of the product
 
-    Return:
-        A x B: MPS
+    Return
+    ----------
+    phi : LPTN or None
+        if overwrite=True, return None, otherwise the result of the product
+        will be returned
         
                     |k   output
                 ----O----
-    A x B   =       |k*, 3
+    O |psi> =       |k*, 3
                     |k , 2
                 ---psi----
     """
@@ -282,48 +295,53 @@ def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
     for n in range(max_sweeps):
         for i in range(N-1): # sweep from left to right
             j = i+1
-            x = merge(psi.As[i], psi.As[j])
-            eff_O = ProjTwoSite(Ls[i], Rs[j], O.As[i], O.As[j])
+            x = merge(psi[i], psi[j])
+            eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
             x = eff_O._matvec(x, vectorize=False)
             # split the result tensor
-            phi.As[i], phi.As[j] = split(x, 'right', tol, m_max)
+            phi[i], phi[j] = split(x, 'right', tol, m_max)
             # update the left bond tensor LBT[j]
-            Ls.update(j, phi.As[i].conj(), psi.As[i], O.As[i])
+            Ls.update(j, phi[i].conj(), psi[i], O[i])
         for j in range(N-1,0,-1): # sweep from right to left
             i = j-1
-            x = merge(psi.As[i], psi.As[j])
+            x = merge(psi[i], psi[j])
             # contracting left block LBT[i]
-            eff_O = ProjTwoSite(Ls[i], Rs[j], O.As[i], O.As[j])
+            eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
             x = eff_O._matvec(x, vectorize=False)
             # split the result tensor
-            phi.As[i], phi.As[j] = split(x, 'left', tol, m_max)
+            phi[i], phi[j] = split(x, 'left', tol, m_max)
             # update the right bond tensor RBT[i]
-            Rs.update(i, phi.As[j].conj(), psi.As[j], O.As[j])
+            Rs.update(i, phi[j].conj(), psi[j], O[j])
         #logging.info('TODO: show norm')
     if overwrite:
         psi.As = phi.As
     else:
         return phi
 
-def zip_up(O, psi, tol, start='left'):
-    r"""
-    Zip-up method for contracting a MPO with a MPS
+def zip_up(O, psi, tol, m_max=None, start='left'):
+    r"""Zip-up method for contracting a MPO with a MPS
 
-    Parameters:
-        O : MPO
-            the operator
-        psi : MPS
-            the operand, modified in place
-        tol : float
-            largest discarded singular value in each truncation step
-        start : str
-            if 'left', the contraction (zipping) is performed from left
-            to right. This should be used when the inital state is right
-            canonical. For `start`='right', it is the other way around.
+    Parameters
+    ----------
+    O : MPO
+        the operator
+    psi : MPS
+        the operand, modified in place
+    tol : float
+        largest discarded singular value in each truncation step
+    m_max : int or None
+        largest bond dimension allowed, default is None
+    start : str
+        if 'left', the contraction (zipping) is performed from left
+        to right. This should be used when the inital state is right
+        canonical. For `start`='right', it is the other way around.
+
+    Return
+    ----------
+    None
     """
     assert len(O) == len(psi)
     N = len(psi)
-    psi.orthonormalize('right')
     if start == 'left':
         M = np.tensordot(psi.As[0], O.As[0], axes=([0,2],[0,3]))
         M = M[None,:,:,:] # s, m, w, k
@@ -332,15 +350,15 @@ def zip_up(O, psi, tol, start='left'):
             s, k, m, w = M.shape
             M = np.reshape(M, (s*k, m*w)) # (s,k), (m,w)
             u, svals, vt = np.linalg.svd(M, full_matrices=False)
-            svals1 = svals / np.linalg.norm(svals)
-            mask = svals1 > tol
-            psi.As[i] = np.reshape(u[:,mask], (s, k, -1)) # s, k, s'
-            psi.As[i] = np.swapaxes(psi.As[i], 1, 2)  # s, s', k
-            M = np.reshape(np.diag(svals[mask]) @ vt[mask,:], (-1, m, w))
-            M = np.tensordot(M, psi.As[i+1], axes=(1,0))
-            M = np.tensordot(M, O.As[i+1], axes=([1,3],[0,3]))
+            svals = svals / np.linalg.norm(svals)
+            pivot = min(np.sum(svals>tol), m_max) if m_max else np.sum(svals>tol)
+            psi[i] = np.reshape(u[:,:pivot], (s, k, -1)) # s, k, s'
+            psi[i] = np.swapaxes(psi.As[i], 1, 2)  # s, s', k
+            M = np.reshape(np.diag(svals[:pivot]) @ vt[:pivot,:], (-1, m, w))
+            M = np.tensordot(M, psi[i+1], axes=(1,0))
+            M = np.tensordot(M, O[i+1], axes=([1,3],[0,3]))
         M = M[:,:,0,:]
-        psi.As[N-1] = M / np.linalg.norm(M)
+        psi[N-1] = M / np.linalg.norm(M)
         # psi is now in the left canonical form
     elif start == 'right':
         M = np.tensordot(psi.As[-1], O.As[-1], axes=([1,2],[1,3]))
@@ -349,15 +367,15 @@ def zip_up(O, psi, tol, start='left'):
             m, w, s, k = M.shape
             M = np.reshape(M, (m*w, s*k))
             u, svals, vt = np.linalg.svd(M, full_matrices=False)
-            svals1 = svals / np.linalg.norm(svals)
-            mask = svals1 > tol
-            psi.As[i] = np.reshape(vt[mask,:], (-1, s, k)) # s', s, k
-            M = np.reshape(u[:,mask] * svals[mask], (m, w, -1))
-            M = np.tensordot(psi.As[i-1], M, axes=(1,0))
-            M = np.tensordot(M, O.As[i-1], axes=([1,2],[3,1]))
+            svals = svals / np.linalg.norm(svals)
+            pivot = min(np.sum(svals>tol), m_max) if m_max else np.sum(svals>tol)
+            psi[i] = np.reshape(vt[:pivot,:], (-1, s, k)) # s', s, k
+            M = np.reshape(u[:,:pivot] * svals[:pivot], (m, w, -1))
+            M = np.tensordot(psi[i-1], M, axes=(1,0))
+            M = np.tensordot(M, O[i-1], axes=([1,2],[3,1]))
             M = np.transpose(M, (0,2,1,3))
         M = M[:,0,:,:]
-        psi.As[0] = M / np.linalg.norm(M)
+        psi[0] = M / np.linalg.norm(M)
         # psi is now in the right canonical form
     else:
         raise ValueError('start can only be left or right.')
