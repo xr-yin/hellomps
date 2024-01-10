@@ -10,7 +10,6 @@ from scipy.sparse.linalg import eigsh
 
 import os
 import logging
-logging.basicConfig(level=logging.ERROR)
 logging.info(f'number of threads in use:{os.environ.get("OMP_NUM_THREADS")}')
 
 from ..networks.mps import MPS
@@ -62,12 +61,12 @@ class DMRG(object):
         Rs = RightBondTensors(N)
         Rs.load(self.psi, self.psi, self.H)
         for n in range(Nsweeps):
-            # each of the first and last tensor are only attended once during a back and forth sweep
+            # the first and last tensors are only attended once during a back and forth sweep
             for i in range(N-2): # sweep from left to right
                 j = i+1
                 x = merge(self.psi[i], self.psi[j])
                 eff_H = ProjTwoSite(Ls[i], Rs[j], self.H[i], self.H[j])
-                _, x = eigsh(eff_H, k=1, which='SA', v0=x, return_eigenvectors=True)
+                _, x = eigsh(eff_H, k=1, which='SA', v0=x)
                 x = np.reshape(x, eff_H.dims)
                 # split the result tensor
                 self.psi[i], self.psi[j] = split(x, 'right', tol, m_max)
@@ -77,7 +76,7 @@ class DMRG(object):
                 i = j-1
                 x = merge(self.psi[i], self.psi[j])
                 eff_H = ProjTwoSite(Ls[i], Rs[j], self.H[i], self.H[j])
-                _, x = eigsh(eff_H, k=1, which='SA', v0=x, return_eigenvectors=True)
+                _, x = eigsh(eff_H, k=1, which='SA', v0=x)
                 x = np.reshape(x, eff_H.dims)
                 # split the result tensor
                 self.psi[i], self.psi[j] = split(x, 'left', tol, m_max)
@@ -98,16 +97,16 @@ class DMRG(object):
         Rs = RightBondTensors(N)
         Rs.load(self.psi, self.psi, self.H)
         for n in range(Nsweeps):
-            # each of the first and last tensor are only attended once during a back and forth sweep
+            # the first and last tensor are only attended once during a back and forth sweep
             for i in range(N-1): # sweep from left to right
                 eff_H = ProjOneSite(Ls[i], Rs[i], self.H[i])
-                _, self.psi[i] = eigsh(eff_H, k=1, which='SA', v0=self.psi[i], return_eigenvectors=True)
+                _, self.psi[i] = eigsh(eff_H, k=1, which='SA', v0=self.psi[i])
                 self.psi[i] = np.reshape(self.psi[i], eff_H.dims)
                 self.psi[i], self.psi[i+1] = qr_step(self.psi[i], self.psi[i+1])
                 Ls.update(i+1, self.psi[i].conj(), self.psi[i], self.H[i])
             for i in range(N-1,0,-1):
                 eff_H = ProjOneSite(Ls[i], Rs[i], self.H[i])
-                _, self.psi[i] = eigsh(eff_H, k=1, which='SA', v0=self.psi[i], return_eigenvectors=True)
+                _, self.psi[i] = eigsh(eff_H, k=1, which='SA', v0=self.psi[i])
                 self.psi[i] = np.reshape(self.psi[i], eff_H.dims)
                 self.psi[i-1], self.psi[i] = rq_step(self.psi[i-1], self.psi[i])
                 Rs.update(i-1, self.psi[i].conj(), self.psi[i], self.H[i])
