@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Common interface for applying projected matrix product operators onto
-    local MPS tensor.
+"""Common interface for applying projected matrix product operators onto local MPS tensor.
 
-    This class acts as an abstract interface between matrix product
-    operators and iterative solvers (for our purposes, mainly eigensolvers), 
-    providing methods to perform MPO-MPS and adjoint MPO-MPS products
+    This class acts as an abstract interface between matrix product operators and iterative 
+    solvers (for our purposes, mainly eigensolvers), providing methods to perform MPO-MPS 
+    and adjoint MPO-MPS products
 """
 
 __author__='Xianrui Yin'
@@ -15,10 +14,47 @@ import numpy as np
 from pylops import LinearOperator
 from pylops.utils.typing import NDArray
 
-import logging
-logging.basicConfig(level=logging.WARNING)
+__all__ = ["ProjZeroSite", "ProjOneSite", "ProjTwoSite", "LeftBondTensors", "RightBondTensors"]
 
-__all__ = ["ProjOneSite", "ProjTwoSite", "LeftBondTensors", "RightBondTensors"]
+class ProjZeroSite(LinearOperator):
+    r"""Project MPO onto a bond
+
+            <bra|
+
+    /```\----0  0----/```\
+    |   |            |   |
+    | L |----1--1----| R |
+    |   |            |   |
+    \___/----2  2----\___/
+
+            |ket>
+
+    Parameters
+    ----------
+    L : ndarray, ndim==3
+        left bond tensor
+    R : ndarray, ndim==3
+        right bond tensor
+    """
+    
+    def __init__(self, L: NDArray, R: NDArray) -> None:
+        self.L = L
+        self.R = R
+        dtype = L.dtype
+        dims = (L.shape[2], R.shape[2])
+        dimsd = (L.shape[0], R.shape[0])
+        super().__init__(dtype=dtype, dims=dims, dimsd=dimsd)
+
+    def _matvec(self, x: NDArray, vectorize=True) -> NDArray:
+        if vectorize:
+            x = x.reshape(self.dims)
+            y = np.tensordot(self.L, x, axes=(2,0))
+            y = np.tensordot(y, self.R, axes=([1,2],[1,2]))
+            return y.reshape(self.shape[1])
+        else:
+            y = np.tensordot(self.L, x, axes=(2,0))
+            y = np.tensordot(y, self.R, axes=([1,2],[1,2]))
+            return y
 
 class ProjOneSite(LinearOperator):
     r"""Project MPO onto a single site
@@ -235,7 +271,7 @@ class RightBondTensors(object):
         """
         assert len(psi) == len(O) == len(phi) == self._N
         for i in range(self._N-1,0,-1):
-            self.update(i-1, phi.As[i].conj(), psi.As[i], O.As[i])
+            self.update(i-1, phi[i].conj(), psi[i], O[i])
 
     def __getitem__(self, idx: int):
         return self.RBT[idx]
