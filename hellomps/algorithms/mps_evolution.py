@@ -163,7 +163,7 @@ class tMPS(object):
 
     def make_uMPO(self, dt:float):
         """
-        Here we adopt the strong splitting exp(i*H*t)~exp(i*H_e*t/2)exp(i*H_o*t)exp(i*H_e*t/2)
+        Here we adopt the strong splitting exp(-i*H*t)~exp(-i*H_e*t/2)exp(-i*H_o*t)exp(-i*H_e*t/2)
         """
         if dt != self.dt:
             self.dt = dt
@@ -176,8 +176,7 @@ class tMPS(object):
                     di, dj = self.dims[i], self.dims[j]
                     u2site = expm(-self.hduo[i]*(k+1)*dt/2)
                     u2site = np.reshape(u2site, (1,1,di,dj,di,dj))  # mL,mR,i,j,i*,j*
-                    ls[i], ls[j] = split(u2site, mode='sqrt', tol=0.)
-            logging.debug([_.shape for _ in full_o])
+                    ls[i], ls[j] = split(u2site, mode='sqrt', tol=0., renormalize=False)
             half_e = MPO(half_e)
             full_o = MPO(full_o)
             self.uMPO = mul(half_e, mul(full_o, half_e))
