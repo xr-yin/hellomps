@@ -52,11 +52,10 @@ class TestMergeSplit(unittest.TestCase):
         a_size = rng.integers(1,8,size=4)
         a = rng.random(a_size)
         for mode in ['left', 'right', 'sqrt']:
-            b, c = split(a, mode, 1e-6)
-            self.assertEqual(b.shape[0], a_size[0])
-            self.assertEqual(b.shape[2], a_size[2])
-            self.assertEqual(c.shape[1], a_size[1])
-            self.assertEqual(c.shape[2], a_size[3])
+            b, c = split(a, mode, 0.)
+            s = (b.shape[0], c.shape[1], 
+                 b.shape[2], c.shape[2])
+            self.assertEqual(s, a.shape)
             self.assertEqual(b.shape[1], c.shape[0])
 
     def test_split_mpo(self):
@@ -65,14 +64,30 @@ class TestMergeSplit(unittest.TestCase):
         a_size = rng.integers(1,8,size=6)
         a = rng.random(a_size)
         for mode in ['left', 'right', 'sqrt']:
-            b, c = split(a, mode, 1e-6)
-            self.assertEqual(b.shape[0], a_size[0])
-            self.assertEqual(b.shape[2], a_size[2])
-            self.assertEqual(c.shape[1], a_size[1])
-            self.assertEqual(c.shape[2], a_size[3])
+            b, c = split(a, mode, 0.)
+            s = (b.shape[0], c.shape[1], 
+                 b.shape[2], c.shape[2], 
+                 b.shape[3], c.shape[3])
+            self.assertEqual(s, a.shape)
             self.assertEqual(b.shape[1], c.shape[0])
-            self.assertEqual(b.shape[3], a_size[4])
-            self.assertEqual(c.shape[3], a_size[5])
+
+    def test_splitandmerge_mpo(self):
+        rng = np.random.default_rng()
+        a_size = rng.integers(1,8,size=6)
+        a = rng.random(a_size)
+        for mode in ['left', 'right', 'sqrt']:
+            b, c = split(a, mode, 0., renormalize=False)
+            new_a = merge(b, c)
+            self.assertTrue(np.allclose(new_a, a))
+
+    def test_splitandmerge_mps(self):
+        rng = np.random.default_rng()
+        a_size = rng.integers(1,8,size=4)
+        a = rng.random(a_size)
+        for mode in ['left', 'right', 'sqrt']:
+            b, c = split(a, mode, 0., renormalize=False)
+            new_a = merge(b, c)
+            self.assertTrue(np.allclose(new_a, a))
 
 class TestMultiplication(unittest.TestCase):
 

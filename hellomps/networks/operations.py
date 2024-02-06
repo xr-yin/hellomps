@@ -156,7 +156,7 @@ def orthonormalizer(self, mode:str, center_idx=None):
             raise ValueError(
                 'Mode argument should be one of left, right or mixed')
 
-def split(theta, mode:str, tol:float, m_max=None):
+def split(theta, mode:str, tol:float, m_max=None, renormalize=True):
     '''
     split a local 4-tensor into two parts by doing a SVD 
     and discard the impertinent singular values
@@ -176,10 +176,11 @@ def split(theta, mode:str, tol:float, m_max=None):
     else:
         raise ValueError('Theta must have rank-4 (for MPS) or rank-6 (for MPO)')
     theta1, s, theta2 = np.linalg.svd(theta, full_matrices=False)
-    s = s / np.linalg.norm(s)
-    pivot = min(np.sum(s>tol), m_max) if m_max else np.sum(s>tol) # sum over the mask
+    s1 = s / np.linalg.norm(s)
+    pivot = min(np.sum(s1>tol), m_max) if m_max else np.sum(s1>tol) # sum over the mask
     theta1, s, theta2 = theta1[:,:pivot], s[:pivot], theta2[:pivot,:]
-    s = s / np.linalg.norm(s)
+    if renormalize:
+        s = s / np.linalg.norm(s)
     if mode == 'left':
         theta1 *= s
     elif mode == 'right':
