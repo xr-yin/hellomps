@@ -24,5 +24,14 @@ class TestSpinChains(unittest.TestCase):
         all_right = MPS.gen_polarized_spin_chain(N, polarization='+x')
         self.assertAlmostEqual(model.energy(all_right), -g*N)
 
+    def test_Heisenberg(self):
+
+        rng = np.random.default_rng()
+        N = rng.integers(3,8)
+        g = 2 * rng.uniform()
+        J = 2 * rng.uniform(size=3)
+        model = Heisenberg(N, J, g)
+        self.assertTrue(np.allclose(model.mpo.to_matrix(), model.H_full.toarray()))
+
 if __name__ == '__main__':
     unittest.main()
