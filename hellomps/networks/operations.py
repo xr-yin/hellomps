@@ -316,6 +316,9 @@ def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
         #logging.info('TODO: show norm')
     if overwrite:
         psi.As = phi.As
+        del Ls
+        del Rs
+        del phi
     else:
         return phi
 
