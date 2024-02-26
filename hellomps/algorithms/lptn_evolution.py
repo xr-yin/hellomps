@@ -10,7 +10,6 @@ import numpy as np
 from scipy.linalg import expm
 
 import logging
-logging.basicConfig(level=logging.ERROR)
 
 from .mps_evolution import TEBD2
 from ..networks.lptn import LPTN
@@ -30,7 +29,7 @@ class LindbladOneSite(TEBD2):
 
     Attributes
     ----------
-    psi : MPS
+    psi : LPTN
         see above
     hduo : list
         a list containing two-local Hamiltonian terms involving only nearest neighbors
@@ -41,8 +40,8 @@ class LindbladOneSite(TEBD2):
 
     Methods
     ----------
+    run()
     run_first_order()
-    run_second_order()
     make_krauss()
     apply_krauss()
     update_local_two_sites()
@@ -52,7 +51,7 @@ class LindbladOneSite(TEBD2):
         super().__init__(psi, model)
         self.dt = None
 
-    def run_second_order(self, Nsteps, dt: float, tol: float, k_max=30, m_max=60): 
+    def run(self, Nsteps, dt: float, tol: float, m_max=60, k_max=30): 
         Nbonds = len(self.psi)-1
         assert Nbonds == len(self.hduo)
         if dt != self.dt:
@@ -62,17 +61,17 @@ class LindbladOneSite(TEBD2):
         # apply a half step at odd-even sites
         for i in range(1, Nbonds, 2):
             self.update_local_two_sites(i, tol, m_max, half=True)
-        self.psi.orthonormalize('right')      
+        self.psi.orthonormalize('right')
         for n in range(Nsteps-1):
             for i in range(0, Nbonds, 2):  # half step at even-odd
                 self.update_local_two_sites(i, tol, m_max, half=True)
-            self.psi.orthonormalize('right')
+            #self.psi.orthonormalize('right')
             for i in range(Nbonds+1):  # full step
                 self.apply_krauss(i, tol, k_max)
             self.psi.orthonormalize('right')
             for i in range(0, Nbonds, 2):  # half step at even-odd
                 self.update_local_two_sites(i, tol, m_max, half=True)
-            self.psi.orthonormalize('right')
+            #self.psi.orthonormalize('right')
             for i in range(1, Nbonds, 2):  # full step at odd-even
                 self.update_local_two_sites(i, tol, m_max)
             self.psi.orthonormalize('right')
@@ -89,7 +88,7 @@ class LindbladOneSite(TEBD2):
             self.update_local_two_sites(i, tol, m_max, half=True)
         self.psi.orthonormalize('right')
 
-    def run_first_order(self, Nsteps, dt: float, tol: float, k_max=30, m_max=60): 
+    def run_first_order(self, Nsteps, dt: float, tol: float, m_max=60, k_max=30): 
         Nbonds = len(self.psi)-1
         assert Nbonds == len(self.hduo)
         self.make_unitaries(1j*dt)
@@ -199,9 +198,10 @@ class LindbladTwoSite(TEBD2):
 
     Methods
     ----------
-    run_second_order()
-    make_krauss()
+    run()
     update_local_two_sites()
+    make_krauss()
+        the Krauss operators here include both coherent Hamiltonian and the Lindblad dissipators
 
     Notes
     ----------
@@ -212,7 +212,7 @@ class LindbladTwoSite(TEBD2):
         self.Lloc = model.lduo # list containing all (local) jump operators
         self.dt = None
 
-    def run_second_order(self, Nsteps, dt: float, tol: float, k_max=20, m_max=100): 
+    def run(self, Nsteps, dt: float, tol: float, m_max=100, k_max=20): 
         Nbonds = len(self.psi)-1
         assert Nbonds == len(self.hduo) == len(self.Lloc)
         if dt != self.dt:
@@ -274,17 +274,23 @@ class LindbladTwoSite(TEBD2):
         2 : Kraus
         """
         B_dict = {'half':[], 'full':[]}
-        for i, (H,L) in enumerate(zip(self.hduo, self.Lloc)):
-            if isinstance(L, np.ndarray):
+        for i, (H,Ls) in enumerate(zip(self.hduo, self.Lloc)):
+            if Ls is not None:
                 dl, dr = self.dims[i], self.dims[i+1]
                 # calculate the Lindbladian in superoperator form
                 # L and H are both matrices with size (dl*dr, dl*dr)
                 d = dl*dr
-                Ls = np.kron(L,L.conj()) \
-                - 0.5*(np.kron(L.conj().T@L, np.eye(d)) + np.kron(np.eye(d), L.T@L.conj())) \
-                - 1j*np.kron(H,np.eye(d)) + 1j*np.kron(np.eye(d),H.T)
+                LL = - 1j*np.kron(H,np.eye(d)) + 1j*np.kron(np.eye(d),H.T)
+                if isinstance(Ls, np.ndarray):
+                    L = Ls
+                    LL += np.kron(L,L.conj()) \
+                        - 0.5*(np.kron(L.conj().T@L, np.eye(d)) + np.kron(np.eye(d), L.T@L.conj()))
+                else:
+                    for L in Ls:
+                        LL += np.kron(L,L.conj()) \
+                            - 0.5*(np.kron(L.conj().T@L, np.eye(d)) + np.kron(np.eye(d), L.T@L.conj()))
                 for tau, key in zip((dt/2, dt),B_dict.keys()):
-                    eLt = expm(Ls*tau)
+                    eLt = expm(LL*tau)
                     eLt = np.reshape(eLt, (d,d,d,d))
                     eLt = np.transpose(eLt, (0,2,1,3))
                     eLt = np.reshape(eLt, (d*d,d*d))
@@ -300,12 +306,10 @@ class LindbladTwoSite(TEBD2):
         self.B_dict = B_dict
         logging.info('Krauss operators prepared')
 
-
-
 def _cholesky(a):
     """stablized cholesky decomposition of matrix a"""
     eigvals, eigvecs = np.linalg.eigh(a)
-    mask = abs(eigvals) > 1e-15
+    mask = abs(eigvals) > 1e-13
     eigvals = eigvals[mask]
     eigvecs = eigvecs[:,mask]
     assert min(eigvals) > 0
