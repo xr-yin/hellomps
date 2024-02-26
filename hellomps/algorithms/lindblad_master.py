@@ -118,7 +118,7 @@ class LindbladOneSite(tMPS):
         B_keys = []
         for i, L in enumerate(self.Lloc):
             d = self.dims[i]
-            if isinstance(L, np.ndarray):
+            if L is not None:
                 B_keys.append(1)
                 # calculate the disspative part in superoperator form
                 D = np.kron(L,L.conj()) \
