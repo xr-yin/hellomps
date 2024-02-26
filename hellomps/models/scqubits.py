@@ -4,9 +4,7 @@
 __author__='Xianrui Yin'
 
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy import sparse
-from numpy.linalg import norm
 
 from .spin_chains import SpinChain
 from .boson_chains import BosonChain
@@ -55,7 +53,16 @@ class QubitCavity(BosonChain,SpinChain):
         return [np.sqrt(self.gamma)*item for item in r]
     
     @property
-    def ham_full(self):
+    def lduo(self):
+        # transform one-site Lindblad operator into two-site
+        rs = [self.sminus,self.bn,self.bn,self.sminus]
+        ids = [self.cid, self.bid, self.bid, self.cid]
+        return [np.sqrt(self.gamma)*np.kron(rs[0], ids[1]), 
+                (np.sqrt(self.gamma)*np.kron(rs[1], ids[2]), np.sqrt(self.gamma)*np.kron(ids[1], rs[2])), 
+                np.sqrt(self.gamma)*np.kron(ids[2], rs[3])]
+    
+    @property
+    def H_full(self):
         return sparse.kron(self.hduo[0],sparse.eye(4*2)) + sparse.kron(sparse.eye(2),sparse.kron(self.hduo[1],sparse.eye(2))) \
             + sparse.kron(sparse.eye(4*2),self.hduo[2])
     
@@ -74,7 +81,7 @@ class QubitCavity(BosonChain,SpinChain):
         Time evolution operator in Fock-Liouvillian space, mathematical expression
         ``
         """
-        H = self.ham_full
+        H = self.H_full
         L = self.L_full
         assert H.shape == L.shape
         d = H.shape[0]
@@ -83,7 +90,7 @@ class QubitCavity(BosonChain,SpinChain):
             - 1j*sparse.kron(H,sparse.eye(d)) + 1j*sparse.kron(sparse.eye(d),H.T)
         return Ls
     
-    def occupation(self,psi:MPS):
+    def occupations(self,psi:MPS):
         return psi.site_expectation_value([(self.sz+self.cid)/2,self.num,self.num,(self.sz+self.cid)/2])
 
 class hamiltonian(object):
