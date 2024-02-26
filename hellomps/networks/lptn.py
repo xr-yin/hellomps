@@ -46,11 +46,11 @@ class LPTN(MPO):
             raise ValueError('Only support polarization +z, -z or +x')
         A = np.zeros([1,1,2,1])
         if polarization == '+z':
-            A[0,0,0] = 1.
+            A[0,0,0,0] = 1.
         elif polarization == '-z':
-            A[0,0,1] = 1.
+            A[0,0,1,0] = 1.
         else:
-            A[0,0,0] = A[0,0,1] = 0.5**0.5
+            A[0,0,0,0] = A[0,0,1,0] = 0.5**0.5
         return cls([A]*N)
     
     @classmethod
@@ -131,7 +131,7 @@ class LPTN(MPO):
                 opc = np.tensordot(amp, op[i], axes=([2,3],[2,3])) # apply local operator
                 res = np.tensordot(amp.conj().transpose(0,1,4,5,2,3), opc, axes=6)
                 exp.append(np.real_if_close(res))
-                self[i], self[i+1] = self._qr_step(self[i], self[i+1]) # move the orthogonality center
+                self[i], self[i+1] = qr_step(self[i], self[i+1]) # move the orthogonality center
             self.As = cache
             return exp
         else:
@@ -261,6 +261,10 @@ def _load_right_bond_tensors(psi:LPTN, phi:LPTN):
         RBT[i-1] = np.tensordot(RBT[i-1], phi[i].conj(), axes=([1,2,3],[2,3,1]))
     return RBT
 
+"""
+The following was taken from K. Slagle, SciPost Phys. 11, 056 (2021)
+but is currently not used in our library.
+"""
 def fastDisentangle(chi1, chi2, A, transposeQ=None):
     """Calculate a unitary tensor with shape (chi1, chi2, chi1*chi2)
     that approximately disentangles the input tensor 'A'.
