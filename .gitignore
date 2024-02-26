@@ -177,3 +177,7 @@ cython_debug/
 # My configurations
 playground/*
 *png
+.vscode/launch.json
+.vscode/settings.json
+TODO.md
+demos/*
