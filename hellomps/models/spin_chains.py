@@ -9,7 +9,7 @@ from scipy import sparse
 from ..networks.mpo import MPO
 from ..networks.mps import MPS
 
-__all__ = ['SpinChain', 'TransverseIsing', 'Heisenberg', 'XXZ']
+__all__ = ['SpinChain', 'TransverseIsing', 'Heisenberg']
 
 class SpinChain(object):
     """
@@ -37,6 +37,16 @@ class SpinChain(object):
             h_full += sparse.kron(sparse.eye(2**i), sparse.kron(hh, np.eye(2**(N-2-i))))
         return h_full
     
+    @property
+    def L_full(self):
+        """extend local one-site Lindblad operators into full space"""
+        N = self._N
+        Ls = []
+        for i, L in enumerate(self.Lloc):
+            if L is not None:
+                Ls.append(sparse.kron(sparse.eye(2**i), sparse.kron(L, np.eye(2**(N-1-i)))))
+        return Ls
+    
     def energy(self, psi:MPS):
         assert len(psi) == self._N
         return np.sum(psi.bond_expectation_value([h.reshape(2,2,2,2) for h in self.hduo]))
@@ -44,7 +54,7 @@ class SpinChain(object):
     def current(self, psi:MPS):
         assert len(psi) == self._N
         Nbonds = self._N-1
-        current_op = 2j*(np.kron(self.splus, self.sminus) - np.kron(self.sminus, self.splus))
+        current_op = -1j*(np.kron(self.splus, self.sminus) - np.kron(self.sminus, self.splus))
         current_op = np.reshape(current_op, (2,2,2,2))
         return psi.bond_expectation_value([current_op]*Nbonds)
 
@@ -65,13 +75,16 @@ class SpinChain(object):
     
     def _Dsup(self, L):
         """
-        calculate the $L\otimes\L^\bar - (L^\dagger L\otimes I + I\otimes L^T L^\bar)/2$
+        calculate the $L\otimes L^\bar - (L^\dagger L\otimes I + I\otimes L^T L^\bar)/2$
         """
         D = 2**self._N
         return sparse.kron(L,L.conj()) \
             - 0.5*(sparse.kron(L.conj().T@L, sparse.eye(D)) + sparse.kron(sparse.eye(D), L.T@L.conj()))
 
     def _Hsup(self, H):
+        """
+        calculate the Hamiltonian superoperator $-iH \otimes I + iI \otimes H^T$
+        """
         D = 2**self._N
         return - 1j*(sparse.kron(H,sparse.eye(D)) - sparse.kron(sparse.eye(D),H.T))
 
@@ -122,7 +135,7 @@ class TransverseIsing(SpinChain):
 
     @property
     def Lloc(self):
-        return None
+        return [None] * self._N
 
 class Heisenberg(SpinChain):
     """1D spin 1/2 Heisenberg model
@@ -171,18 +184,7 @@ class Heisenberg(SpinChain):
             # reshape is carried out in evolution algorithms after exponetiation
             h_list.append(h)
         return h_list
-
-class XXZ(SpinChain):
-    def __init__(self, N:int, delta:float, gamma=0,) -> None:
-        super().__init__(N)
-        self.delta = delta
-        self.gamma = gamma
-
-    @property
-    def hduo(self):
-        sx, sz, sy = self.sx, self.sz, self.sy
-        return [np.kron(sx,sx) + np.kron(sy,sy) + self.delta*np.kron(sz,sz)]*(self._N-1)
-        
+    
     @property
     def Lloc(self):
         # list of jump operators
@@ -192,8 +194,4 @@ class XXZ(SpinChain):
     
     @property
     def Liouvillian(self):
-        Ls = []
-        
-        L0 = sparse.kron(self.Lloc[0], sparse.eye(2**(self._N-1)))
-        L1 = sparse.kron(sparse.eye(2**(self._N-1)), self.Lloc[-1])
-        return super().Liouvillian(self.H_full, L0, L1)
+        return super().Liouvillian(self.H_full, *self.L_full)
