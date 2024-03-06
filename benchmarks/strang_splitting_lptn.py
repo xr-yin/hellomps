@@ -22,7 +22,7 @@ from hellomps.models.scqubits import QubitCavity
 from hellomps.models.spin_chains import TransverseIsing, SpinChain, Heisenberg
 from hellomps.algorithms.lindblad_master import LindbladOneSite, contract_disspative_layer
 
-def XXZ(N: int, tmax: float, dt_list: list, ax: plt.Axes):
+def XXZ(N: int, tmax: float, dt_list: list, ax1: plt.Axes, ax2: plt.Axes):
     """we use the Heisenberg XXZ model to test if our simulation method exhibit quadratic errors
 
     Parameters
@@ -33,9 +33,11 @@ def XXZ(N: int, tmax: float, dt_list: list, ax: plt.Axes):
         total time for simulation
     dt_list : list
         list of time steps
-    ax : matplotlib.pyplot.Axes object
-        plot
-    
+    ax1 : matplotlib.pyplot.Axes object
+        the error plot
+    ax1 : matplotlib.pyplot.Axes object
+        the runtime plot
+
     Remarks
     ----------
     The full Liouvillian matrix has a size of n^2 x n^2, which requires a lot of computer memory if 
@@ -53,33 +55,33 @@ def XXZ(N: int, tmax: float, dt_list: list, ax: plt.Axes):
 
     Xt_ref = expm_multiply(tmax * model.Liouvillian, X.to_density_matrix().ravel())
 
-    for n, dt in enumerate(dt_list):
-        psi = deepcopy(X)
-        lab = LindbladOneSite(psi, model)
-        Nsteps = round(tmax / dt)
-        print(f"Nsteps={Nsteps}")
-        start = time.time()
-        lab.run_detach(Nsteps, dt, 1e-9, 20, 20, max_sweeps=2)
-        time_t[n] = time.time() - start
-        # record error
-        err_t[n] = np.linalg.norm(psi.to_density_matrix().ravel() - Xt_ref)
-        print('trace:', np.trace(psi.to_density_matrix()))
+    for bd,kd in [(10,10), (15,15), (15,20), (20,15), (20,20)]:
+        for n, dt in enumerate(dt_list):
+            psi = deepcopy(X)
+            lab = LindbladOneSite(psi, model)
+            Nsteps = round(tmax / dt)
+            print(f"Nsteps={Nsteps}")
+            start = time.time()
+            lab.run_detach(Nsteps, dt, 1e-9, bd, kd, max_sweeps=2)
+            time_t[n] = time.time() - start
+            # record error
+            err_t[n] = np.linalg.norm(psi.to_density_matrix().ravel() - Xt_ref)
+            print('trace:', np.trace(psi.to_density_matrix()))
 
-    print('errors:', err_t)
-    ax.plot(dt_list, err_t, 'o-', label='error')
-    ax.plot(dt_list, np.array(dt_list)**2, '--', label="$\delta t^2$") # second order in dt
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_xlabel("$\delta t$")
-    ax.set_ylabel("errors")
-    ax.set_title(f"XXZ model evolved up to t = {tmax}")
+        print('errors:', err_t)
+        ax1.loglog(dt_list, err_t, 'o-', label=f'bd={bd},kd={kd}')
+        ax2.plot(dt_list, time_t, 'x-', label=f'bd={bd},kd={kd}')
 
-    ax1 = ax.twinx()
-    ax1.plot(dt_list, time_t, 'x-', label='time')
-    ax1.set_ylabel("execution times (s)")
+    ax1.plot(dt_list, np.array(dt_list)**2, '--', label="$\delta t^2$") # second order in dt
+    ax1.set_xlabel("$\delta t$")
+    ax1.set_ylabel("errors")
+    ax1.set_title(f'simulation up to t={tmax}')
 
-    ax.legend()
+    ax2.set_ylabel("execution times (s)")
+    ax2.set_yscale('log')
+
     ax1.legend()
+    ax2.legend()
 
 def tfi_coherent():
     """errors from the coherent layer alone
@@ -195,11 +197,11 @@ if __name__ == '__main__':
     dt_list = np.array([0.5**k for k in range(num_intervals+1)])
 
     # convergence plots
-    fig, ax = plt.subplots()
-    fig.set_size_inches(8,11)
-    fig.suptitle('Strang splitting of Liouville operator')
+    fig, (ax1,ax2) = plt.subplots(ncols=2)
+    fig.set_size_inches(12,8)
+    fig.suptitle('Strang splitting of Liouville operator for a XXZ model')
 
-    XXZ(8, tmax, dt_list, ax)
+    XXZ(8, tmax, dt_list, ax1, ax2)
 
-    plt.savefig('XXZ_converge')
+    plt.savefig('XXZ_converge_003')
     plt.show()
