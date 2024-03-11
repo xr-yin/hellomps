@@ -1,5 +1,5 @@
 """In this module, we use LindbladOneSite() to simulate an edge driving XXZ chain
-and observe the local megnetization and particle current in equalibrium.
+and observe the local megnetization and particle current in nonequalibrium steady state.
 """
 
 import numpy as np

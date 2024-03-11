@@ -18,9 +18,8 @@ sys.path.append(os.path.join(hellompspath, "hellomps"))
 
 from hellomps.networks.lptn import LPTN
 from hellomps.networks.mps import MPS
-from hellomps.models.scqubits import QubitCavity
 from hellomps.models.spin_chains import TransverseIsing, SpinChain, Heisenberg
-from hellomps.algorithms.lindblad_master import LindbladOneSite, contract_disspative_layer
+from hellomps.algorithms.lindblad_master import LindbladOneSite
 
 def XXZ(N: int, tmax: float, dt_list: list, ax1: plt.Axes, ax2: plt.Axes):
     """we use the Heisenberg XXZ model to test if our simulation method exhibit quadratic errors
@@ -123,7 +122,7 @@ def tfi_coherent():
     plt.ylabel('errors')
     plt.legend()
 
-    plt.savefig('tfi_coherent_01')
+    plt.savefig('tfi_coherent')
     
 def disspative_dynamics():
     """errors from the dissipative layer alone"""
@@ -149,11 +148,7 @@ def disspative_dynamics():
 
         lab.run_detach(1, dt, tol=1e-9, m_max=25, k_max=25, max_sweeps=2)
         lab.run_detach(Nsteps-1, dt, tol=1e-9, m_max=25, k_max=25, max_sweeps=1)
-        """
-        lab.make_disspative_layer(dt)
-        for i in range(Nsteps):
-            contract_disspative_layer(lab.B_list, psi, lab.B_keys)
-        """
+
         print(psi.bond_dims)
         print(psi.krauss_dims)
 
@@ -166,7 +161,7 @@ def disspative_dynamics():
     plt.ylabel('errors')
     plt.legend()
 
-    plt.savefig('random_disspative_01')
+    plt.savefig('random_disspative')
 
 class disspative_testmodel(SpinChain):
 
@@ -191,7 +186,7 @@ class disspative_testmodel(SpinChain):
 if __name__ == '__main__': 
 
     tmax = float(input('simulation time:') or 1.)
-    num_intervals = int(input('number of time intervals:') or 3)
+    num_intervals = int(input('number of time intervals:') or 4)
 
     # the total time steps = 2**k
     dt_list = np.array([0.5**k for k in range(num_intervals+1)])
@@ -203,5 +198,5 @@ if __name__ == '__main__':
 
     XXZ(8, tmax, dt_list, ax1, ax2)
 
-    plt.savefig('XXZ_converge_003')
+    plt.savefig('XXZ_converge')
     plt.show()
