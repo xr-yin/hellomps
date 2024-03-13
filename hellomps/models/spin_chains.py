@@ -196,7 +196,7 @@ class Heisenberg(SpinChain):
     def Liouvillian(self):
         return super().Liouvillian(self.H_full, *self.L_full)
     
-class disspative_testmodel(SpinChain):
+class dissipative_testmodel(SpinChain):
 
     def __init__(self, N:int) -> None:
         rng = np.random.default_rng()
