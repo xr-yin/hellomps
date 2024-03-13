@@ -195,3 +195,23 @@ class Heisenberg(SpinChain):
     @property
     def Liouvillian(self):
         return super().Liouvillian(self.H_full, *self.L_full)
+    
+class disspative_testmodel(SpinChain):
+
+    def __init__(self, N:int) -> None:
+        rng = np.random.default_rng()
+        idx = rng.integers(N)
+        self._Lloc = [rng.normal(size=(2, 2)) \
+                      + 1j*rng.normal(size=(2,2)) \
+                      for i in range(N)]
+        self._Lloc[idx] = None
+        self.idx = idx
+        self._N = N
+
+    @property
+    def hduo(self):
+        return [np.zeros((4,4))] * (self._N-1)
+    
+    @property
+    def Lloc(self):
+        return self._Lloc
