@@ -6,7 +6,6 @@ __author__='Xianrui Yin'
 
 import numpy as np
 
-import math
 from copy import deepcopy
 
 from .mps import MPS
@@ -173,7 +172,7 @@ class LPTN(MPO):
         """tr(rho**2) = trace(rho*rho) = ||rho||_F ^2"""
         return np.linalg.norm(self.to_density_matrix())**2
 
-def compress(psi:LPTN, tol:float, m_max:int, k_max:int, max_sweeps=2, disentangle=False):
+def compress(psi:LPTN, tol:float, m_max:int, max_sweeps=2):
     """variationally compress a LPTN by optimizing the trace norm |X'-X|, where X' is 
     the guess state
 
@@ -218,7 +217,6 @@ def compress(psi:LPTN, tol:float, m_max:int, k_max:int, max_sweeps=2, disentangl
             temp = merge(psi[i],psi[j])
             temp = np.tensordot(LBT[i], temp, axes=(0,0))
             temp = np.tensordot(RBT[j], temp, axes=(0,1)).swapaxes(0,1)
-            # dientangle
             phi[i], phi[j] = split(temp, 'right', tol, m_max)
             # compute left bond tensor L[j]
             LBT[j] = np.tensordot(psi[i], LBT[i], axes=(0,0))
@@ -228,7 +226,6 @@ def compress(psi:LPTN, tol:float, m_max:int, k_max:int, max_sweeps=2, disentangl
             temp = merge(psi[i],psi[j])
             temp = np.tensordot(LBT[i], temp, axes=(0,0))
             temp = np.tensordot(RBT[j], temp, axes=(0,1)).swapaxes(0,1)
-            # dientangle
             phi[i], phi[j] = split(temp, 'left', tol, m_max)
             # compute right bond tensor R[i]
             RBT[i] = np.tensordot(psi[j], RBT[j], axes=(1,0))
