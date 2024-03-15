@@ -24,10 +24,14 @@ class QubitCavity(BosonChain,SpinChain):
     As default, we truncate the local Hilbert space dimension of cavities to 4, i.e. at most 3 excitations 
     and design the system to be symmetric. We may as well modify these assumptions.
 
-    Parameters:
-        alphas: a list containing coupling strengths between spins and cavities, cavity and cavity
-        omegas: a list containing resonate frequencies of the cavities and the spins
-        gamma: coupling strength between the system and the environment
+    Parameters
+    ----------
+    alphas : list
+        a list containing coupling strengths between spins and cavities, cavity and cavity
+    omegas : list
+        a list containing resonate frequencies of the cavities and the spins
+    gamma : float
+        coupling strength between the system and the environment
     """
     def __init__(self, alphas: list, omegas:list, gamma:float) -> None:
         super().__init__(N=4, d=4)  # calls __init__() in the BosonChain class
