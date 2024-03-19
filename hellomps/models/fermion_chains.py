@@ -12,8 +12,7 @@ from ..networks.mps import MPS
 __all__ = ['SpinlessFermion', 'KitaevChain']
 
 class SpinlessFermion(object):
-    """
-    class for spinless fermions
+    """class for spinless fermions
     """
     cn = np.array([[0., 1.], [0., 0.]])
     ct = np.array([[0., 0.], [1., 0.]])
@@ -56,17 +55,17 @@ class SpinlessFermion(object):
 
 class KitaevChain(SpinlessFermion):
 
-    def __init__(self, N: int, J:float, delta:float, mu:float, gamma: float) -> None:
+    def __init__(self, N: int, t=1., delta=1., mu=0., gamma=0.1) -> None:
         super().__init__(N)
-        self.J = J
-        self.delta = delta
-        self.mu = mu
-        self.gamma = gamma
+        self.t = t  # hopping 
+        self.delta = delta  # creation/annihilate pairs of neighbours 
+        self.mu = mu  # on-site energy
+        self.gamma = gamma  # damping rate
 
     @property
     def hduo(self):
         cn, ct, num, id = self.cn, self.ct, self.num, self.id
-        J, delta, mu = self.J, self.delta, self.mu
+        t, delta, mu = self.t, self.delta, self.mu
         h_list = []
         for i in range(self._N - 1):
             muL = muR = 0.5 * mu
@@ -74,7 +73,7 @@ class KitaevChain(SpinlessFermion):
                 muL = mu
             if i + 1 == self._N - 1: # last bond
                 muR = mu
-            h = - J * (np.kron(ct, cn) + np.kron(cn, ct)) \
+            h = - t * (np.kron(ct, cn) + np.kron(cn, ct)) \
                 + delta * (np.kron(cn, cn) + np.kron(ct, ct)) \
                 - muL * np.kron(num, id) \
                 - muR * np.kron(id, num)
