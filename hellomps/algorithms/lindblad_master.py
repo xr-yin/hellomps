@@ -14,7 +14,7 @@ from copy import deepcopy
 
 from .mps_evolution import tMPS
 from ..networks.mpo import MPO
-from ..networks.lptn import LPTN, compress, fastDisentangle
+from ..networks.lptn import LPTN, compress
 from ..networks.operations import merge, split, mul
 from ..networks.mpo_projected_lptn import *
 
@@ -306,8 +306,6 @@ def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=Non
             x = merge(psi[i], psi[j])
             eff_O = ProjTwoSite(Ls[i], Rs[j], O.As[i], O.As[j])
             x = eff_O._matvec(x)
-            # dientangle
-            #x = disentangle(x)
             # split the result tensor
             phi[i], phi[j] = split(x, 'right', tol, m_max)
             # update the left bond tensor LBT[j]
@@ -319,8 +317,6 @@ def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=Non
             # contracting left block LBT[i]
             eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
             x = eff_O._matvec(x)
-            # dientangle
-            #x = disentangle(x)
             # split the result tensor
             phi[i], phi[j] = split(x, 'left', tol, m_max)
             # update the right bond tensor RBT[i]
@@ -330,7 +326,7 @@ def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=Non
         overlap = np.tensordot(overlap, O[0], axes=([1,3],[2,1]))
         overlap = np.tensordot(overlap, psi[0], axes=([2,4,1],[1,2,3]))
         overlap = overlap.ravel()
-        #print(f'overlap={overlap}')
+        #print(f'n={n}, overlap={overlap}')
     psi.As = phi.As
     del phi
     del Rs
@@ -381,15 +377,3 @@ def truncate_krauss(x, tol, k_max):
     svals = svals[:pivot] 
     #/ np.linalg.norm(svals[:pivot])
     return np.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'
-
-def disentangle(x):
-    """a wrapper of fastDisentangle()"""
-    mL, mR, chi3, chi4, chi1, chi2 = x.shape
-    x = np.transpose(x, (4,5,0,2,1,3)) # chi1, chi2, mL, chi3, mR, chi4
-    x = np.reshape(x, (chi1*chi2, mL*chi3, mR*chi4))
-    U = fastDisentangle(chi1, chi2, x) # (chi1, chi2, chi1*chi2)
-    x = np.tensordot(x, U, axes=(0,2)) # mL*chi3, mR*chi4, chi1, chi2
-    x = np.reshape(x, (mL, chi3, mR, chi4, chi1, chi2))
-    x = np.swapaxes(x, 1, 2)
-    del U
-    return x
