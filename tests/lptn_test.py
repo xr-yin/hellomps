@@ -42,9 +42,35 @@ class TestLPTN(unittest.TestCase):
 
     def test_compress(self):
         self.psi.orthonormalize('right')
-        phi, overlap = compress(self.psi, 1e-7, 4, 4, max_sweeps=3)
+        phi, overlap = compress(self.psi, 1e-7, 4, max_sweeps=3)
         self.assertAlmostEqual(overlap, 1)
         self.assertAlmostEqual(np.linalg.norm(self.psi.to_matrix()-phi.to_matrix()), 0.)
+
+    def test_measure(self):
+
+        rng = np.random.default_rng()
+        N = rng.integers(3,8)
+        m_max = rng.integers(4,9)
+        k_max = rng.integers(4,9)
+        d = rng.integers(2, 5)
+        psi = LPTN.gen_random_state(N, m_max, k_max, [d]*N)
+
+        num = rng.integers(1,4)
+        op_list = LPTN.gen_random_mpo(num, 2, [d]*num) #hermitian
+        op_list = [op.squeeze() for op in op_list]
+        self.assertEqual(len(op_list), num)
+
+        # test local case
+        idx = rng.integers(N)
+        res = psi.measure(op_list, idx)
+        self.assertEqual(len(res), num)
+        for op, v in zip(op_list, res):
+            self.assertTrue(np.allclose(psi.site_expectation_value(op, idx), v))
+
+        # test global case
+        res = psi.measure(op_list)
+        for op, v in zip(op_list, res):
+            self.assertTrue(np.allclose(psi.site_expectation_value([op]*N), v))
 
     def setUp(self) -> None:
         rng = np.random.default_rng()

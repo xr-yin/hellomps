@@ -73,7 +73,7 @@ class LPTN(MPO):
         Parameters
         ----------
         op : list or NDArray
-            list of local two-site operators or a single local two-site operator
+            list of local operators or a single local operator
         idx : int or None
             if `idx` is None, `op` must be a list of ordered local operators for 
             every physical site.
@@ -95,10 +95,10 @@ class LPTN(MPO):
             opc = np.tensordot(amp, op[-1], axes=(2,1)) # apply local operator
             res = np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)
             exp.append(np.real_if_close(res))
-            self.As =cache
+            self.As = cache
             return exp
         else:
-            assert isinstance(idx, int)
+            #assert isinstance(idx, int)
             cache = self.As
             self.orthonormalize(mode='mixed', center_idx = idx)
             amp = self[idx]   # amplitude in the Schmidt basis
@@ -142,14 +142,66 @@ class LPTN(MPO):
             res = np.tensordot(amp.conj().transpose(0,1,4,5,2,3), opc, axes=6)
             self.As = cache
             return np.real_if_close(res)
-            #return res
+        
+    def measure(self, op_list, idx=None):
+        """Perform measurements successively on each site
+
+        When only one operator is measured, one can call site_expectation_value().
+        When there are more to be measured, this function will be faster bacause 
+        here we only go through the entire system once and the measurements are 
+        handled together .
+
+        Parameters
+        ----------
+        op_list : list
+            list of local operators
+        idx : int or None
+            if `idx` is None, the measurements are done on every site in order
+            if `idx` is an integer, the measurements are done on the specified 
+            site only
+
+        Return
+        ----------
+        exp : (nested) list
+            if `idx` is None, a nested list of same length as op_list will be 
+            returned, with each sublist of length N, containing the expectation
+            values
+            if `idx` is an integer, a list of same length as op_list will be returned, 
+            containing the expectation values
+        """
+        if idx:
+            cache = self.As
+            self.orthonormalize(mode='mixed', center_idx = idx)
+            amp = self[idx]   # amplitude in the Schmidt basis
+            res = []
+            for op in op_list:
+                opc = np.tensordot(amp, op, axes=(2,1)) # apply local operator
+                res.append(np.real_if_close(np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)))
+            self.As = cache
+            return res
+        else:
+            cache = self.As
+            exp = [[] for op in op_list]    # a nested list to store the measurement results
+            self.orthonormalize(mode='right')
+            for i in range(self._N-1):
+                amp = self[i]   # amplitude in the Schmidt basis
+                for j, op in enumerate(op_list):
+                    opc = np.tensordot(amp, op, axes=(2,1)) # apply local operator
+                    res = np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)
+                    exp[j].append(np.real_if_close(res))
+                self[i], self[i+1] = qr_step(self[i], self[i+1]) # move the orthogonality center
+            amp = self[-1]
+            for j, op in enumerate(op_list):
+                opc = np.tensordot(amp, op, axes=(2,1)) # apply local operator
+                res = np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)
+                exp[j].append(np.real_if_close(res))
+            self.As = cache
+            return exp
 
     def to_density_matrix(self):
         r"""density matrix for the locally purified tensor network
         \rho = X  X^\dagger
         """
-        A = self.hc()
-        B = self
         return mul(self, self.hc()).to_matrix()
     
     def probabilities(self):
