@@ -78,7 +78,8 @@ class MPS(object):
         bond_dims[0] = bond_dims[-1] = 1
         As = []
         for i in range(N):
-            As.append(rng.random((bond_dims[i],bond_dims[i+1],phy_dims[i])))
+            size = (bond_dims[i],bond_dims[i+1],phy_dims[i])
+            As.append((rng.normal(size=size) + 1j*rng.normal(size=size))/2**0.5)
         return cls(As)
 
     def orthonormalize(self, mode:str, center_idx=None):
