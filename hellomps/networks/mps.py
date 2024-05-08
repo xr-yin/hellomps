@@ -99,8 +99,9 @@ class MPS(object):
             S = []
             self.orthonormalize(mode='right')
             for i in range(self._N - 1):
-                self[i], self[i+1] = qr_step(self[i], self[i+1])
-                s = np.linalg.svd(self[i+1],full_matrices=False,compute_uv=False)
+                self[i], self[i+1] = qr_step(self[i], self[i+1])    # orthogonality cneter at i+1
+                mL = self[i+1].shape[0] # bond between i and i+1
+                s = np.linalg.svd(self[i+1].reshape(mL, -1), full_matrices=False, compute_uv=False)
                 s = s[s>1.e-15]
                 ss = s*s
                 S.append(-np.sum(ss*np.log(ss)))
@@ -110,7 +111,8 @@ class MPS(object):
             assert isinstance(idx, int)
             cache = self.As
             self.orthonormalize(mode='mixed',center_idx=idx)
-            s = np.linalg.svd(self[idx],full_matrices=False,compute_uv=False)
+            mL = self[idx].shape[0] # bond between idx-1 and idx
+            s = np.linalg.svd(self[idx].reshape(mL, -1), full_matrices=False, compute_uv=False)
             s = s[s>1.e-15]
             ss = s*s
             self.As = cache
