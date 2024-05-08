@@ -170,7 +170,7 @@ class LPTN(MPO):
             if `idx` is an integer, a list of same length as op_list will be returned, 
             containing the expectation values
         """
-        if idx:
+        if idx is not None:
             cache = self.As
             self.orthonormalize(mode='mixed', center_idx = idx)
             amp = self[idx]   # amplitude in the Schmidt basis
@@ -241,8 +241,6 @@ def compress(psi:LPTN, tol:float, m_max:int, max_sweeps=2):
         maximun kraus dimension
     max_sweeps : int
         maximum optimization sweeps
-    disentangle : Bool
-        if True, fastDisentangle() is used on top
 
     Return
     ----------
@@ -254,6 +252,7 @@ def compress(psi:LPTN, tol:float, m_max:int, max_sweeps=2):
     phi = deepcopy(psi)  # overwrite set to False, first copy then orthonormalize
     phi.orthonormalize('left')
     # peform a SVD sweep from the right to left
+    # to find the initial guess of the target state with the required dimension
     for i in range(N-1,0,-1):
         di, dj, dd, dk = phi[i].shape
         phi[i] = np.reshape(phi[i], (di, dj*dd*dk))
@@ -285,11 +284,12 @@ def compress(psi:LPTN, tol:float, m_max:int, max_sweeps=2):
             RBT[i] = np.tensordot(RBT[i], phi[j].conj(), axes=([1,2,3],[2,3,1]))
         overlap = np.tensordot(psi[0], RBT[0], axes=(1,0))
         overlap = np.tensordot(overlap, phi[0].conj(), axes=([1,2,3],[2,3,1]))
+        print(f'overlap after the {n+1} sweep(s): {overlap.item()}')
     return phi, overlap.item()
 
 def _load_right_bond_tensors(psi:LPTN, phi:LPTN):
     """Calculate the right bond tensors while contracting two LPTNs.
-    RBT[i] is to the right of the MPS[i].
+    RBT[i] is to the right of the LPTN[i].
 
     Parameters
     ----------
