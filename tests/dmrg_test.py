@@ -14,7 +14,7 @@ from hellomps.networks.mps import MPS
 from hellomps.models.spin_chains import TransverseIsing
 from hellomps.algorithms.dmrg import DMRG
 
-class TestOperations(unittest.TestCase):
+class TestDMRG(unittest.TestCase):
 
     def test_DMRG(self):
 
