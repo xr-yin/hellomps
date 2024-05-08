@@ -190,32 +190,43 @@ def tfi_coherent():
     plt.savefig('tfi_coherent')
     
 def dissipative_dynamics():
-    """errors from the dissipative layer alone"""
+    """errors from the dissipative layer alone
+
+    Since no two-qubit gates from the unitary time evolution are present, the bond 
+    dimensions stay strictly the same. The SVD along the Kraus bond is truncation-free, 
+    so long as the k_max is greater than mL*d*mR. This is easy to satisfy if we start 
+    with a product state, in this case, the error should be close to the machine error.
+    """
+    
     N = 7
     tmax = 1.
 
-    dt_list = np.array([0.5**k for k in range(3)])  # hence the total time steps = 2**k
+    dt_list = np.array([0.5**k for k in range(5)])  # hence the total time steps = 2**k
     err_t = np.zeros(len(dt_list))
 
     model = dissipative_testmodel(N)
 
-    x = LPTN.gen_polarized_spin_chain(N, '+z')
+    x = LPTN.gen_random_state(N, m_max=10, k_max=10, phy_dims=[2]*N)
+    x.orthonormalize('right')
+    x.orthonormalize('left')
+    print('bond dimensions at start:', x.bond_dims)
+    print('Kraus dimensions at start:', x.krauss_dims)
     # reference time-evolved state
     xt_ref = expm_multiply(tmax * model.Liouvillian(model.H_full, *model.L_full), x.to_density_matrix().ravel())
 
     for n, dt in enumerate(dt_list):
 
-        psi = LPTN.gen_polarized_spin_chain(N, '+z')
+        psi = deepcopy(x)
         lab = LindbladOneSite(psi, model)
 
         Nsteps = round(tmax / dt)
         logging.info(f"Nsteps={Nsteps}")
 
-        lab.run_detach(1, dt, tol=1e-9, m_max=25, k_max=25, max_sweeps=2)
-        lab.run_detach(Nsteps-1, dt, tol=1e-9, m_max=25, k_max=25, max_sweeps=1)
+        lab.run_detach(1, dt, tol=1e-9, m_max=15, k_max=15, max_sweeps=2)
+        lab.run_detach(Nsteps-1, dt, tol=1e-9, m_max=15, k_max=15, max_sweeps=1)
 
-        print(psi.bond_dims)
-        print(psi.krauss_dims)
+        print('bond dimensions at finish:', psi.bond_dims)
+        print('Kraus dimensions at finish:', psi.krauss_dims)
 
         # record error
         err_t[n] = np.linalg.norm(psi.to_density_matrix().ravel() - xt_ref)
@@ -225,7 +236,7 @@ def dissipative_dynamics():
     plt.xlabel('$\delta t$')
     plt.ylabel('errors')
     plt.legend()
-
+    plt.tight_layout()
     plt.savefig('random_dissipative')
 
 if __name__ == '__main__': 
