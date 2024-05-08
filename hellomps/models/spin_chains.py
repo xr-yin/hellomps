@@ -197,7 +197,7 @@ class Heisenberg(SpinChain):
         return super().Liouvillian(self.H_full, *self.L_full)
     
 class dissipative_testmodel(SpinChain):
-
+    """A spin chain model with random local dissipators"""
     def __init__(self, N:int) -> None:
         rng = np.random.default_rng()
         idx = rng.integers(N)
@@ -210,7 +210,7 @@ class dissipative_testmodel(SpinChain):
 
     @property
     def hduo(self):
-        return [np.zeros((4,4))] * (self._N-1)
+        return [np.zeros((4,4))] * (self._N-1)  # null Hamiltonian --> identity unitaries
     
     @property
     def Lloc(self):
