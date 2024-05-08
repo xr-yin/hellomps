@@ -1,7 +1,7 @@
 """This module demonstrates the Frobenius norm errors in our LPTN simulations converge quadratically with time step size O(dt^2) in 
 the presence of Strang splitting. 
 
-The first two models we study are the edge-driving Heisenberg XXZ chain and the disspative-driven Bose Hubburd chain. The former have 
+The first two models we study are the edge-driving Heisenberg XXZ chain and the dissipative-driven Bose Hubburd chain. The former have 
 only non-trivial Krauss dimension at the first and last site of the chain, as a result of having local dissipators only at the two edges. 
 The latter, on the other hand, have local dissipator acting on every site. They both show that the Frobenius norm errors produced by our
 tensor network approach converge in the second order of time step.
@@ -226,7 +226,7 @@ def dissipative_dynamics():
     plt.ylabel('errors')
     plt.legend()
 
-    plt.savefig('random_disspative')
+    plt.savefig('random_dissipative')
 
 if __name__ == '__main__': 
 

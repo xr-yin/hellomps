@@ -127,7 +127,7 @@ class LindbladOneSite(TEBD2):
         for i, L in enumerate(self.Lloc):
             if isinstance(L, np.ndarray):
                 d = self.dims[i]
-                # calculate the disspative part in superoperator form
+                # calculate the dissipative part in superoperator form
                 D = np.kron(L,L.conj()) \
                 - 0.5*(np.kron(L.conj().T@L, np.eye(d)) + np.kron(np.eye(d), L.T@L.conj()))
                 eD = expm(D*dt)
@@ -261,7 +261,7 @@ class LindbladTwoSite(TEBD2):
     def make_krauss(self, dt):
         """
         calculate the Kraus operators from the Lindbladian operators, which includes 
-        both coherent and disspative dynamics (L=H+D), the resulting Kraus operators 
+        both coherent and dissipative dynamics (L=H+D), the resulting Kraus operators 
         have the following shape
                     |0
                 :.......:

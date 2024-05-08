@@ -18,7 +18,7 @@ from ..networks.lptn import LPTN, compress
 from ..networks.operations import merge, split, mul
 from ..networks.mpo_projected_lptn import *
 
-__all__ = ['LindbladOneSite', 'applyMPKO', 'contract_coherent_layer', 'contract_disspative_layer']
+__all__ = ['LindbladOneSite', 'applyMPKO', 'contract_coherent_layer', 'contract_dissipative_layer']
 
 class LindbladOneSite(tMPS):
     r"""Handles the case when the Lindblad jump operators only act on single sites.
@@ -57,7 +57,7 @@ class LindbladOneSite(tMPS):
     make_coherent_layer()
         calculate the unitary time evolution operator at a MPO (MPU) from the local Hamiltonian
         terms
-    make_disspative_layer()
+    make_dissipative_layer()
         calculate the Krauss representation of the local quantum channels
     """
     def __init__(self, psi: LPTN, model) -> None:
@@ -68,8 +68,8 @@ class LindbladOneSite(tMPS):
         Nbonds = len(self.psi)-1
         assert Nbonds == len(self.hduo)
         if dt != self.dt:
-            self.make_conherent_layer(dt)
-            self.make_disspative_layer(dt)
+            self.make_coherent_layer(dt)
+            self.make_dissipative_layer(dt)
             self.dt = dt
         self.overlaps = []
         for i in range(Nsteps):
@@ -77,7 +77,7 @@ class LindbladOneSite(tMPS):
             _ = contract_coherent_layer(self.uMPO[0], self.psi, tol, m_max, k_max, max_sweeps)
             self.overlaps.append(_)
             # apply bMPO
-            contract_disspative_layer(self.B_list, self.psi, self.B_keys)
+            contract_dissipative_layer(self.B_list, self.psi, self.B_keys)
             # apply uMPO[1]
             _ = contract_coherent_layer(self.uMPO[1], self.psi, tol, m_max, k_max, max_sweeps)
             self.overlaps.append(_)
@@ -100,7 +100,7 @@ class LindbladOneSite(tMPS):
         if Nsteps % 2:
             applyMPKO(self.full_list, self.psi, tol=tol, start='left')
                 
-    def make_disspative_layer(self, dt: float):
+    def make_dissipative_layer(self, dt: float):
         """
         calculate the Kraus operators from the Lindblad jump operators, the resulting
         Kraus operators have the following shape
@@ -120,7 +120,7 @@ class LindbladOneSite(tMPS):
             d = self.dims[i]
             if L is not None:
                 B_keys.append(1)
-                # calculate the disspative part in superoperator form
+                # calculate the dissipative part in superoperator form
                 D = np.kron(L,L.conj()) \
                 - 0.5*(np.kron(L.conj().T@L, np.eye(d)) + np.kron(np.eye(d), L.T@L.conj()))
                 eDt = expm(D*dt)
@@ -137,7 +137,7 @@ class LindbladOneSite(tMPS):
         self.B_list = B_list
         self.B_keys = B_keys
 
-    def make_conherent_layer(self, dt:float):
+    def make_coherent_layer(self, dt:float):
         """
         Here we adopt the strong splitting exp(-i*H*t)~exp(-i*H_e*t/2)exp(-i*H_o*t)exp(-i*H_e*t/2)
         """
@@ -169,8 +169,8 @@ class LindbladOneSite(tMPS):
                     ----c----
                         |k*, 3  input
         """
-        self.make_conherent_layer(dt)
-        self.make_disspative_layer(dt)
+        self.make_coherent_layer(dt)
+        self.make_dissipative_layer(dt)
         Os = []
         for a, b, c in zip(self.uMPO[0], self.B_list, self.uMPO[1]):
             a0, a1 = a.shape[:2]
@@ -333,8 +333,8 @@ def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=Non
     del Ls
     return overlap
 
-def contract_disspative_layer(O: list, psi: LPTN, keys: list):
-    """Contract the disspative layer of Kraus operators with the LPTN
+def contract_dissipative_layer(O: list, psi: LPTN, keys: list):
+    """Contract the dissipative layer of Kraus operators with the LPTN
 
     Parameters
     ----------
