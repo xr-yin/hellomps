@@ -14,7 +14,7 @@ import sys
 import time
 import logging
 from copy import deepcopy
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 
 hellompspath = os.path.dirname(os.path.abspath(os.getcwd()))
 sys.path.append(os.path.join(hellompspath, "hellomps"))
