@@ -1,9 +1,9 @@
 import numpy as np
 from scipy.linalg import qr, rq, norm
 from copy import deepcopy
-#from numba import jit
+from numba import jit
 
-from ..networks.mpo_projected import *
+import logging
 
 __all__ = ['qr_step', 'rq_step', 'split', 'merge', 'mul', 'apply_mpo', 'zip_up']
 
@@ -226,7 +226,7 @@ def merge(theta1, theta2):
 def mul(A, B):
     """
     Calculate the product of a MPO and a MPS (or another MPO) by direct 
-    contraction. The dimensions of the bonds will simply multiply. This 
+    contraction. The dimensions of the bonds will simply multiply. 
     When B is a MPS, you should consider using apply_mpo() or zip-up() 
     instead for achieving optimzed bond dimension.
 
@@ -258,7 +258,25 @@ def mul(A, B):
         Os.append(O)
     return MPS([O[:,:,:,0] for O in Os]) if isinstance(B, MPS) else MPO(Os)
 
-def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
+def apply_mpo(O, psi, tol: float, m_max: int, max_sweeps: int = 2):
+    """A wrapper for varaiational multiplication of MPO-MPS and MPO-MPO
+
+    Parameters
+    ----------
+    See _matvec() and _matmat()
+
+    Return
+    ----------
+    See _matvec() and _matmat()
+    """
+    if psi[0].ndim == 3:    # psi is a MPS
+        return _matvec(O, psi, tol, m_max, max_sweeps)
+    elif psi[0].ndim == 4:  # psi is a MPO
+        return _matmat(O, psi, tol, m_max, max_sweeps)
+    else:
+        raise ValueError('psi must be a MPS or a MPO!')
+
+def _matvec(O, psi, tol:float, m_max:int, max_sweeps:int):
     """Varationally calculate the product of a MPO and a MPS.
 
     Parameters
@@ -273,8 +291,6 @@ def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
         largest bond dimension allowed, default is None
     max_sweeps : int
         maximum number of optimization sweeps
-    overwrite : Bool
-        if True, psi will be overwritten with the result of the product
 
     Return
     ----------
@@ -288,6 +304,9 @@ def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
                     |k , 2
                 ---psi----
     """
+
+    from ..networks.mpo_projected import RightBondTensors, LeftBondTensors, ProjTwoSite
+
     N = len(psi)
     phi = deepcopy(psi) # assume psi is only changed slightly, useful
     phi.orthonormalize('right') # when O is a time evolution operator 
@@ -314,14 +333,97 @@ def apply_mpo(O, psi, tol:float, m_max:int, max_sweeps:int, overwrite=False):
             phi[i], phi[j] = split(x, 'left', tol, m_max)
             # update the right bond tensor RBT[i]
             Rs.update(i, phi[j].conj(), psi[j], O[j])
-        #logging.info('TODO: show norm')
-    if overwrite:
-        psi.As = phi.As
-        del Ls
-        del Rs
-        del phi
-    else:
-        return phi
+
+        norm = np.tensordot(phi[0].conj(), Rs[0], axes=(1,0))
+        norm = np.tensordot(norm, O[0], axes=([1,2],[2,1]))
+        norm = np.tensordot(norm, psi[0], axes=([1,3],[1,2]))
+        norm = norm.ravel()
+
+        logging.info(f'n={n}, norm={np.real_if_close(norm).item()}')
+
+    psi.As = phi.As
+    del Ls
+    del Rs
+    del phi
+    return np.real_if_close(norm).item()
+
+def _matmat(O, psi, tol: float, m_max: int, max_sweeps:int):
+    """Varationally calculate the product of a MPO and another MPO/LPTN.
+
+    psi is modified in place, the result is the product O|psi>        
+                    |k   output
+                ----O----
+    O |psi> =       |k*, 3
+                    |k , 2
+                ---psi----
+                    |
+
+    Parameters
+    ----------
+    O : MPO
+        the operator
+    psi : MPO, LPTN 
+        the operand
+    tol : float
+        largest discarded singular value in each truncation step
+    m_max : int 
+        largest bond dimension allowed, default is None
+    max_sweeps : int
+        maximum number of optimization sweeps
+
+    Return
+    ----------
+    overlap : float
+        the optimized inner product <phi|O|psi> where |phi> ~ O|psi>
+        The name 'overlap' is only appropriate when |psi> is a unit 
+        vector and O is unitary. In this case, <phi|O|psi> evaluates 
+        to 1 whenever phi is a good approximation. In general cases, 
+        'norm square' would be a better term since <phi|O|psi> ~ 
+        <phi|phi>.
+        
+    """
+    
+    from .mpo_projected_lptn import RightBondTensors, LeftBondTensors, ProjTwoSite
+
+    N = len(psi)
+    phi = deepcopy(psi) # assume psi is only changed slightly, useful
+    phi.orthonormalize('right') # when O is a time evolution operator 
+    Rs = RightBondTensors(N)  # for a small time step
+    Ls = LeftBondTensors(N)
+    Rs.load(phi, psi, O)
+    for n in range(max_sweeps):
+        for i in range(N-1): # sweep from left to right
+            j = i+1
+            x = merge(psi[i], psi[j])
+            eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
+            x = eff_O._matvec(x)
+            # split the result tensor
+            phi[i], phi[j] = split(x, 'right', tol, m_max)
+            # update the left bond tensor LBT[j]
+            Ls.update(j, phi[i].conj(), psi[i], O[i])
+        for j in range(N-1,0,-1): # sweep from right to left
+            i = j-1
+            x = merge(psi[i], psi[j])
+            # contracting left block LBT[i]
+            eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
+            x = eff_O._matvec(x)
+            # split the result tensor
+            phi[i], phi[j] = split(x, 'left', tol, m_max)
+            # update the right bond tensor RBT[i]
+            Rs.update(i, phi[j].conj(), psi[j], O[j])
+        
+        norm = np.tensordot(phi[0].conj(), Rs[0], axes=(1,0))
+        norm = np.tensordot(norm, O[0], axes=([1,3],[2,1]))
+        norm = np.tensordot(norm, psi[0], axes=([2,4,1],[1,2,3]))
+        norm = norm.ravel()
+
+        logging.info(f'n={n}, norm={np.real_if_close(norm).item()}')
+
+    psi.As = phi.As
+    del phi
+    del Rs
+    del Ls
+    return np.real_if_close(norm).item()
 
 def zip_up(O, psi, tol, m_max=None, start='left'):
     r"""Zip-up method for contracting a MPO with a MPS

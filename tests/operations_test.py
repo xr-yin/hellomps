@@ -3,6 +3,8 @@ import numpy as np
 import unittest
 import sys
 import os
+import logging
+logging.basicConfig(level=logging.INFO)
 
 hellompspath = os.path.dirname(os.path.abspath(os.getcwd()))
 sys.path.append(os.path.join(hellompspath, "hellomps"))
@@ -10,6 +12,7 @@ sys.path.append(os.path.join(hellompspath, "hellomps"))
 from hellomps.networks.operations import *
 from hellomps.networks.mpo import MPO
 from hellomps.networks.mps import MPS, inner
+from hellomps.networks.lptn import LPTN
 
 class TestMergeSplit(unittest.TestCase):
 
@@ -107,14 +110,43 @@ class TestMultiplication(unittest.TestCase):
         ampo = MPO.gen_random_mpo(N, m_max, phy_dims)
         C = mul(A, ampo)
         self.assertTrue(np.allclose(C.to_matrix(), A.to_matrix() @ ampo.to_matrix()))
-
-    def test_apply_mpo(self):
+    
+    def test_apply_mpo2mps(self):
 
         O, psi = self.O, self.psi
+        logging.info(f' O  dims: {O.bond_dims}')
+        logging.info(f'psi dims: {psi.bond_dims}')
         Opsi = mul(O, psi)
-        phi = apply_mpo(O, psi, tol=1e-6, m_max=max(psi.bond_dims), max_sweeps=2)
+        logging.info(f'Opsi dims: {Opsi.bond_dims}')
+        norm = apply_mpo(O, psi, tol=1e-6, m_max=max(Opsi.bond_dims)-3, max_sweeps=2)
+        logging.info(f'res dims: {psi.bond_dims}')
+        self.assertAlmostEqual(norm**2, inner(Opsi, Opsi))  # why square the norm
 
-        self.assertAlmostEqual(inner(Opsi, phi), np.sqrt(inner(Opsi,Opsi)*inner(phi,phi)), 9)
+        self.assertAlmostEqual(inner(Opsi, psi), np.sqrt(inner(Opsi,Opsi)*inner(psi,psi)), 9)
+
+    def test_apply_mpo2mpo(self):
+
+        O, phi = self.O, self.phi
+
+        multibonds = np.array(phi.bond_dims)*np.array(O.bond_dims)
+        logging.info(f'multiplied bond dimensions and mean: {multibonds}')
+        logging.info(f'krauss dimensions: {phi.krauss_dims}')
+
+        # regular matrix products for comparison
+        ref = O.to_matrix() @ phi.to_matrix() # |v> = O|psi>
+
+        overlap = apply_mpo(O, phi, tol=1e-6, m_max=max(multibonds), max_sweeps=2)
+        logging.info(f'optimized bond dimensions: {phi.bond_dims}')
+        logging.info(f'optimized krauss dimensions: {phi.krauss_dims}')
+
+        self.assertAlmostEqual(overlap, np.linalg.norm(ref))    # <v|v> =? <v|v>**0.5
+
+        self.assertAlmostEqual(np.linalg.norm(ref - phi.to_matrix())**2,
+                               np.linalg.norm(phi.to_matrix())**2 + np.linalg.norm(ref)**2 - 2*np.real(overlap))
+        
+        r = ref / np.linalg.norm(ref)
+        self.assertAlmostEqual(np.linalg.norm(r - phi.to_matrix()), 0.)
+        self.assertAlmostEqual(np.linalg.norm(r@r.T.conj() - phi.to_density_matrix()), 0.)
 
     def test_zip_up(self):
 
@@ -142,13 +174,19 @@ class TestMultiplication(unittest.TestCase):
     def setUp(self) -> None:
 
         rng = np.random.default_rng()
+
         N = rng.integers(5,9)
-        m_max = rng.integers(4,7)
+        m_max = rng.integers(9,19)
         phy_dims = rng.integers(2, 5, size=N)
+
         self.O = MPO.gen_random_mpo(N, m_max, phy_dims)
         self.O.orthonormalize('right')
+
         self.psi = MPS.gen_random_state(N, m_max, phy_dims)
         self.psi.orthonormalize('right')
+
+        self.phi = LPTN.gen_random_state(N, m_max, 5, phy_dims)
+        self.phi.orthonormalize('right')
 
 if __name__ == '__main__':
     unittest.main()
