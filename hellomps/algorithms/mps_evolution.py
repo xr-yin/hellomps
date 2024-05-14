@@ -215,7 +215,7 @@ class tMPS(object):
                 zip_up(self.uMPO, self.psi, tol, start='left')
         elif backend == 'variational':
             for i in range(Nsteps):
-                apply_mpo(self.uMPO, self.psi, tol, m_max, max_sweeps=compress_sweeps, overwrite=True)
+                apply_mpo(self.uMPO, self.psi, tol, m_max, max_sweeps=compress_sweeps)
         else:
             raise ValueError('backend can only be zip-up or variational.')
 
