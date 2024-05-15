@@ -268,6 +268,14 @@ def applyMPKO(O: list, psi: LPTN, tol: float, m_max=None, k_max=None, start='lef
 def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=None, max_sweeps=1):
     """Varationally calculate the product of a MPO and a LPTN.
 
+    psi is modified in place, the result is the product O|psi>        
+                    |k   output
+                ----O----
+    O |psi> =       |k*, 3
+                    |k , 2
+                ---psi----
+                    |
+
     Parameters
     ----------
     O : MPO
@@ -283,15 +291,14 @@ def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=Non
 
     Return
     ----------
-    phi : LPTN
-        result of the product O|psi>
+    overlap : float
+        the optimized inner product <phi|O|psi> where |phi> ~ O|psi>
+        The name 'overlap' is only appropriate when |psi> is a unit 
+        vector and O is unitary. In this case, <phi|O|psi> evaluates 
+        to 1 whenever phi is a good approximation. In general cases, 
+        'norm square' would be a better term since <phi|O|psi> ~ 
+        <phi|phi>.
         
-                    |k   output
-                ----O----
-    O |psi> =       |k*, 3
-                    |k , 2
-                ---psi----
-                    |
     """
     N = len(psi)
     phi = deepcopy(psi) # assume psi is only changed slightly, useful
@@ -304,7 +311,7 @@ def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=Non
             j = i+1
             psi[i] = truncate_krauss(psi[i], tol, k_max)
             x = merge(psi[i], psi[j])
-            eff_O = ProjTwoSite(Ls[i], Rs[j], O.As[i], O.As[j])
+            eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
             x = eff_O._matvec(x)
             # split the result tensor
             phi[i], phi[j] = split(x, 'right', tol, m_max)
@@ -326,12 +333,16 @@ def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=Non
         overlap = np.tensordot(overlap, O[0], axes=([1,3],[2,1]))
         overlap = np.tensordot(overlap, psi[0], axes=([2,4,1],[1,2,3]))
         overlap = overlap.ravel()
-        #print(f'n={n}, overlap={overlap}')
+        # overlap should be REAL no matter O is unitary or not
+        # because <phi|O|psi> ~ <psi|O*O|psi> = <v|v> is real
+        # whenever |phi> ~ O|psi>
+        # here * means hermitian conjugate and |v> = O|psi>
+        logging.info(f'n={n}, overlap={np.real_if_close(overlap).item()}')
     psi.As = phi.As
     del phi
     del Rs
     del Ls
-    return overlap
+    return np.real_if_close(overlap).item()
 
 def contract_dissipative_layer(O: list, psi: LPTN, keys: list):
     """Contract the dissipative layer of Kraus operators with the LPTN
