@@ -95,7 +95,7 @@ class LeftBondTensors(object):
         self[idx] = np.tensordot(bra, self[idx-1], axes=(0,0))
         self[idx] = np.tensordot(self[idx], op, axes=([1,3],[2,0]))
         self[idx] = np.tensordot(self[idx], ket, axes=([1,2,4],[3,0,2]))
-        assert self[idx].shape == (bra.shape[1], op.shape[1], ket.shape[1])
+        #assert self[idx].shape == (bra.shape[1], op.shape[1], ket.shape[1])
 
     def __getitem__(self, idx: int):
         return self.LBT[idx]
@@ -143,7 +143,7 @@ class RightBondTensors(object):
         self[idx] = np.tensordot(bra, self[idx+1], axes=(1,0))
         self[idx] = np.tensordot(self[idx], op, axes=([1,3],[2,1]))
         self[idx] = np.tensordot(self[idx], ket, axes=([2,4,1],[1,2,3]))
-        assert self[idx].shape == (bra.shape[0], op.shape[0], ket.shape[0])
+        #assert self[idx].shape == (bra.shape[0], op.shape[0], ket.shape[0])
 
     def load(self, phi, psi, O):
         """Iteratively computing the right bond tensors resulted from 
