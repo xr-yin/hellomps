@@ -49,7 +49,7 @@ class LindbladOneSite(tMPS):
     Methods
     ----------
     run_detach()
-        prime method for simulating the Lindblad master equation with one-stie disspators,
+        primal method for simulating the Lindblad master equation with one-stie dissipators,
         using a variational approach to update the purification network at every time step.
     run_attach()
         a simpler simulating method, contracting the matrix product krauss operator and the 
@@ -73,7 +73,7 @@ class LindbladOneSite(tMPS):
             self.dt = dt
         for i in range(Nsteps):
             # apply uMPO[0]
-            lp = contract_coherent_layer(self.uMPO[0], self.psi, tol, m_max, k_max, max_sweeps)
+            lp = contract_coherent_layer(self.uMPO[0], self.psi, tol, m_max, max_sweeps)
             # now in right canonical form
             logging.debug(f'overlap={lp}')
             # apply bMPO
@@ -83,7 +83,7 @@ class LindbladOneSite(tMPS):
             truncate_krauss_sweep(self.psi, tol, k_max)
             # now in left canonical form
             # apply uMPO[1]
-            lp = contract_coherent_layer(self.uMPO[1], self.psi, tol, m_max, k_max, max_sweeps)
+            lp = contract_coherent_layer(self.uMPO[1], self.psi, tol, m_max, max_sweeps)
             # now in right canonical form
             logging.debug(f'overlap={lp}')
     
@@ -270,7 +270,7 @@ def applyMPKO(O: list, psi: LPTN, tol: float, m_max=None, k_max=None, start='lef
     else:
         raise ValueError('start can only be left or right.')
 
-def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=None, max_sweeps=1):
+def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, max_sweeps=1):
     """Varationally calculate the product of a MPO and a LPTN.
 
     psi is modified in place, the result is the product O|psi>        
