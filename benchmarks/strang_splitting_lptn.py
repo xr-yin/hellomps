@@ -130,8 +130,9 @@ def BoseHubbardRun(N: int, d: int, tmax: float, dt_list: list, ax1: plt.Axes, ax
             time_t[n] = time.time() - start
             # record error
             err_t[n] = np.linalg.norm(psi.to_density_matrix().ravel() - Xt_ref)
-            print('trace:', np.trace(psi.to_density_matrix()))
+            logging.info(f'trace={np.real_if_close(np.trace(psi.to_density_matrix()))}')
 
+        print(f'bd_max={bd}, kd_max={kd}')
         print('errors:', err_t)
         ax1.loglog(dt_list, err_t, 'o-', label=f'bd={bd},kd={kd}')
         ax2.plot(dt_list, time_t, 'x-', label=f'bd={bd},kd={kd}')
