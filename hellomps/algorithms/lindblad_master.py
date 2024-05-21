@@ -71,16 +71,21 @@ class LindbladOneSite(tMPS):
             self.make_coherent_layer(dt)
             self.make_dissipative_layer(dt)
             self.dt = dt
-        self.overlaps = []
         for i in range(Nsteps):
             # apply uMPO[0]
-            _ = contract_coherent_layer(self.uMPO[0], self.psi, tol, m_max, k_max, max_sweeps)
-            self.overlaps.append(_)
+            lp = contract_coherent_layer(self.uMPO[0], self.psi, tol, m_max, k_max, max_sweeps)
+            # now in right canonical form
+            logging.debug(f'overlap={lp}')
             # apply bMPO
             contract_dissipative_layer(self.B_list, self.psi, self.B_keys)
+            # now STILL in right canonical form because application of Kraus operators preserve
+            # canonical forms
+            truncate_krauss_sweep(self.psi, tol, k_max)
+            # now in left canonical form
             # apply uMPO[1]
-            _ = contract_coherent_layer(self.uMPO[1], self.psi, tol, m_max, k_max, max_sweeps)
-            self.overlaps.append(_)
+            lp = contract_coherent_layer(self.uMPO[1], self.psi, tol, m_max, k_max, max_sweeps)
+            # now in right canonical form
+            logging.debug(f'overlap={lp}')
     
     def run_attach(self, Nsteps, dt: float, tol: float, m_max: int, k_max: int): 
         Nbonds = len(self.psi)-1
@@ -309,7 +314,6 @@ def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=Non
     for n in range(max_sweeps):
         for i in range(N-1): # sweep from left to right
             j = i+1
-            psi[i] = truncate_krauss(psi[i], tol, k_max)
             x = merge(psi[i], psi[j])
             eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
             x = eff_O._matvec(x)
@@ -319,7 +323,6 @@ def contract_coherent_layer(O: MPO, psi: LPTN, tol: float, m_max: int, k_max=Non
             Ls.update(j, phi[i].conj(), psi[i], O[i])
         for j in range(N-1,0,-1): # sweep from right to left
             i = j-1
-            psi[j] = truncate_krauss(psi[j], tol, k_max)
             x = merge(psi[i], psi[j])
             # contracting left block LBT[i]
             eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
@@ -388,3 +391,31 @@ def truncate_krauss(x, tol, k_max):
     svals = svals[:pivot] 
     #/ np.linalg.norm(svals[:pivot])
     return np.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'
+
+def truncate_krauss_sweep(As:list, tol:float, k_max:int):
+    """psi must be in right canonical form when passed in"""
+    for i in range(len(As)-1):
+        di, dj, dd, dk = As[i].shape
+        u, svals, _ = np.linalg.svd(As[i].reshape(-1,dk), full_matrices=False)
+        pivot = min(np.sum(svals**2>tol), k_max)
+        svals = svals[:pivot] / np.linalg.norm(svals[:pivot])
+        As[i] = np.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'
+
+        dk = As[i].shape[-1]    # reduced Kraus dim
+        As[i], r = np.linalg.qr(np.reshape(As[i].transpose(0,2,3,1), (-1, dj)))
+        # qr decomposition might change dj
+        As[i] = np.transpose(As[i].reshape(di,dd,dk,-1), (0,3,1,2))
+        
+        As[i+1] = np.tensordot(r, As[i+1], axes=1)
+
+    i = -1
+    di, dj, dd, dk = As[i].shape
+    u, svals, _ = np.linalg.svd(As[i].reshape(-1,dk), full_matrices=False)
+    pivot = min(np.sum(svals**2>tol), k_max)
+    svals = svals[:pivot] / np.linalg.norm(svals[:pivot])
+    As[i] = np.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'
+
+    dk = As[i].shape[-1]    # reduced Kraus dim
+    As[i], r = np.linalg.qr(np.reshape(As[i].transpose(0,2,3,1), (-1, dj)))
+    # qr decomposition might change dj
+    As[i] = np.transpose(As[i].reshape(di,dd,dk,-1), (0,3,1,2))
