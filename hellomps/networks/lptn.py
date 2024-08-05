@@ -143,6 +143,46 @@ class LPTN(MPO):
             res = np.tensordot(amp.conj().transpose(0,1,4,5,2,3), opc, axes=6)
             self.As = cache
             return np.real_if_close(res)
+
+    def correlations(self, A, B, i):
+        """calculate the correlation function C(j) = <A_i*B_j> for j >=i
+        
+        Parameters
+        ----------
+        A : numpy.ndarray
+            operator acting on site i
+        B : numpy.ndarray
+            operator acting on site j
+        i : int
+            site index
+
+        Return
+        ------
+        corrs : numpy.ndarray
+            1D array contains C(j)
+        """
+        N = self._N
+        assert i < N
+        corrs = np.zeros(self._N-i)
+        # j = i
+        self.orthonormalize(mode='mixed', center_idx=i)
+        amp = self[i]   # amplitude in the Schmidt basis
+        opc = np.tensordot(amp, A @ B, axes=([2],[1]))
+        corrs[0] = np.tensordot(amp.conj(), opc.swapaxes(2,3), axes=4)
+        # j > i
+        # Alice stores the contraction from the left to site j (including A but excluding B)
+        Alice = np.tensordot(amp, A, axes=([2],[1]))
+        Alice = np.tensordot(amp.conj(), Alice, axes=([0,2,3],[0,3,2]))  # mR*, mR
+        for j in range(i+1, N):
+            amp = self[j]   # this is not an amplitude in the Schmidt basis since j != i
+            Bob = np.tensordot(amp, B, axes=([2],[1]))
+            Bob = np.tensordot(Alice, Bob, axes=([1], [0]))
+            Bob = np.tensordot(amp.conj(), Bob.swapaxes(2,3), axes=4)
+            corrs[j-i] = Bob
+            # update Alice
+            Alice = np.tensordot(Alice, amp, axes=([1], [0]))
+            Alice = np.tensordot(amp.conj(), Alice, axes=([0,2,3], [0,2,3]))
+        return np.real_if_close(corrs)
         
     def measure(self, op_list, idx=None):
         """Perform measurements successively on each site
